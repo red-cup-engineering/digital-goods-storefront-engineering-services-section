@@ -99,8 +99,10 @@ export async function putStagedRelease(store, staged) {
 /**
  * Reconcile the goods store against the catalog's accepted editions. Every
  * offering with an acceptance record is staged at that edition; an offering
- * whose stored pointer already names it is left alone, so a run that changed
- * nothing puts nothing.
+ * whose stored pointer and bundle still match it is left alone, so a run
+ * that changed nothing puts nothing. A pointer alone cannot establish that
+ * the paid bytes remain deliverable. Missing or damaged bundles are rebuilt
+ * from the accepted artifacts; storage read errors remain refusals.
  * @param {{catalog: object, servicesRoot: string, store: {get: Function, putCurrent: Function}, out: string, dryRun?: boolean}} options
  */
 export async function reconcilePaidReleases({ catalog, servicesRoot, store, out, dryRun = false }) {
@@ -111,7 +113,16 @@ export async function reconcilePaidReleases({ catalog, servicesRoot, store, out,
       const intended = acceptedReleaseOf(record);
       const stored = await store.get(releasePointerKey(offering.id));
       const pointer = stored === null ? undefined : JSON.parse(Buffer.from(stored.body).toString("utf8"));
-      const current = pointer?.release === intended.release && Object.entries(intended.artifacts).every(([format, digest]) => pointer.artifacts?.[format] === digest);
+      const namesIntended = pointer?.release === intended.release && Object.entries(intended.artifacts).every(([format, digest]) => pointer.artifacts?.[format] === digest);
+      let current = false;
+      if (namesIntended) {
+        const admitted = admitReleasePointer(pointer, offering.id);
+        const storedBundle = await store.get(admitted.bundle.key);
+        if (storedBundle !== null) {
+          const bytes = Buffer.from(storedBundle.body);
+          current = bytes.byteLength === admitted.bundle.bytes && createHash("sha256").update(bytes).digest("hex") === admitted.bundle.sha256;
+        }
+      }
       if (current) { rows.push({ offering: offering.id, release: intended.release, state: "current" }); continue; }
       if (dryRun) { rows.push({ offering: offering.id, release: intended.release, state: "would-stage", stored: pointer?.release ?? null }); continue; }
       const staged = stageAcceptedRelease({ record, offering: offering.id, out: join(out, offering.id) });
@@ -126,3 +137,4 @@ export async function reconcilePaidReleases({ catalog, servicesRoot, store, out,
     offerings: Object.freeze(rows),
   });
 }
+

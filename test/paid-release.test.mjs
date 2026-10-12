@@ -20,7 +20,10 @@ function staged(bundleBytes, overrides = {}) {
 test("a staged release is admitted and delivered with its release named", async () => {
   const bytes = new Uint8Array([1, 2, 3, 4]);
   const env = { SHOP_GOODS: bucketWith(staged(bytes)) };
-  assert.deepEqual({ ...(await admitPaidRelease("example-book", env)) }, { offeringId: "example-book", release: "ni:///sha-256;release", byteLength: 4 });
+  const admitted = await admitPaidRelease("example-book", env);
+  assert.deepEqual(admitted, { offeringId: "example-book", release: "ni:///sha-256;release", byteLength: 4, bundle: {
+    key: "goods/example-book/r1/example-book.zip", sha256: createHash("sha256").update(bytes).digest("hex"), bytes: 4, contentType: "application/zip", filename: "example-book.zip",
+  } });
   const response = await readPaidRelease("example-book", env);
   assert.equal(response.headers.get("x-release"), "ni:///sha-256;release");
   assert.equal(response.headers.get("content-disposition"), 'attachment; filename="example-book.zip"');
@@ -38,3 +41,4 @@ test("an offering with nothing staged, or a bundle outside its goods, is unavail
   const outside = staged(new Uint8Array([1]), { key: "goods/other-book/r1/x.zip" });
   await assert.rejects(admitPaidRelease("example-book", { SHOP_GOODS: bucketWith(outside) }), /outside this offering/u);
 });
+
