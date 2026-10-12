@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/digital-goods-storefront.mjs && node --check src/worker-runtime.mjs && node --check src/durable-fulfillment.mjs && node --check scripts/validate-catalog.mjs && node --check scripts/render-catalog.mjs && node --check scripts/issue-download-token.mjs && node --check scripts/derive-stripe-offerings.mjs && node --check apps/storefront-cli.mjs && node --check src/paid-release.mjs && node --check src/paid-release-staging.mjs && node --check scripts/stage-paid-release.mjs && node --check src/storefront-presentation.mjs && node --check src/retail-listings.mjs && node --check scripts/derive-retail-listings.mjs && node --check src/review-copy.mjs && node --check scripts/stage-review-copy.mjs"
+    "check": "node --check src/digital-goods-storefront.mjs && node --check src/worker-runtime.mjs && node --check src/stripe-checkout-fulfillment.mjs && node --check src/durable-fulfillment.mjs && node --check scripts/validate-catalog.mjs && node --check scripts/render-catalog.mjs && node --check scripts/issue-download-token.mjs && node --check scripts/derive-stripe-offerings.mjs && node --check apps/storefront-cli.mjs && node --check src/paid-release.mjs && node --check src/paid-release-staging.mjs && node --check scripts/stage-paid-release.mjs && node --check src/storefront-presentation.mjs && node --check src/retail-listings.mjs && node --check scripts/derive-retail-listings.mjs && node --check src/review-copy.mjs && node --check scripts/stage-review-copy.mjs"
   },
   "dependencies": {
     "@red-cup-engineering/computer-web-server": "workspace:*",
@@ -37,3 +37,4 @@
   },
   "license": "UNLICENSED"
 }
+

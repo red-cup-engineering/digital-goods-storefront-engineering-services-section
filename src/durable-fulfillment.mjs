@@ -1,3 +1,4 @@
+import { CHECKOUT_EVENTS } from "@red-cup-engineering/stripe-services-section/checkout-events";
 import { reviewCopyEntitlement } from "./review-copy.mjs";
 
 function reply(value, status = 200) { return Response.json(value ?? null, { status }); }
@@ -43,11 +44,13 @@ export class DigitalGoodsFulfillment {
       return reply({ disposition: existing ? "duplicate" : "registered" });
     });
     if (request.method === "POST" && url.pathname === "/claim") return this.ctx.storage.transaction(async (transaction) => {
+      const eventType = body.eventType ?? "checkout.session.completed";
+      if (!CHECKOUT_EVENTS.includes(eventType)) return reply({ disposition: "rejected" }, 409);
       if (await transaction.get(`event:${body.eventId}`)) return reply({ disposition: "duplicate" });
       const checkout = await transaction.get(`checkout:${body.sessionId}`);
       const valid = checkout && body.paymentStatus === "paid" && body.status === "complete" && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency && checkout.stripeMode === body.stripeMode;
       if (!valid) return reply({ disposition: "rejected" }, 409);
-      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: "checkout.session.completed" });
+      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType });
       const entitlementKey = `entitlement:${body.sessionId}`; const existing = await transaction.get(entitlementKey);
       if (existing) return reply({ disposition: "duplicate-session" });
       const account = accountOf(checkout.account);
@@ -121,3 +124,4 @@ export function createDurableFulfillment(namespace, name) {
     audit: { async record(entry) { const result = await call("/audit", entry); if (result.failed) throw new Error("could not record checkout receipt"); return entry; } },
   };
 }
+

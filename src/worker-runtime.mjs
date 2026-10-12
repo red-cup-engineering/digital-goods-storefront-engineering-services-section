@@ -1,16 +1,16 @@
-import { ACTOR as STRIPE_ACTOR, invokeCheckout, projectEvent, readiness, solicitCheckout, verifyStripeSignature } from "@red-cup-engineering/stripe-services-section";
+import { ACTOR as STRIPE_ACTOR, invokeCheckout, readiness, solicitCheckout } from "@red-cup-engineering/stripe-services-section";
 import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, resolveGoogleSettings } from "@red-cup-engineering/computer-web-server/admission/google";
 import { tuftePage, tufteRedirect } from "@red-cup-engineering/web-page-tiling-engine/application";
 import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/storefront";
 import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
 import { catalogModel, issueDownloadToken, stripeOfferingFor, validateCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
+import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
 import { REVIEW_COPY_ID, admitReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
 import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
 
 const PAID = new Set(["live", "test-only"]);
-const MAX_STRIPE_WEBHOOK_BYTES = 1024 * 1024;
 const GIFT_ID = /^gift-[0-9a-f-]{36}$/u;
 const MAX_API_BYTES = 16 * 1024;
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/u;
@@ -156,21 +156,6 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     return Response.redirect(accepted.object.checkoutUrl, 303);
   }
 
-  async function webhook(request, env) {
-    if (!supportsStore(env.fulfillment)) return json({ error: "fulfillment-store-unavailable" }, 503);
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_STRIPE_WEBHOOK_BYTES) return json({ error: "stripe-webhook-body-too-large" }, 413);
-    if (!verifyStripeSignature({ rawBody, signatureHeader: request.headers.get("stripe-signature") ?? "", secret: env.STRIPE_WEBHOOK_SECRET })) return json({ error: "invalid-or-stale-stripe-signature" }, 400);
-    let event; try { event = JSON.parse(rawBody); } catch { return json({ error: "invalid-json" }, 400); }
-    if (event?.type !== "checkout.session.completed") return json({ accepted: true });
-    const projection = projectEvent(event);
-    if (!projection.stripeEventId || !projection.stripeObjectId || typeof projection.livemode !== "boolean") return json({ error: "payment-does-not-match-checkout-intent" }, 409);
-    const result = await env.fulfillment.claimPayment({ eventId: projection.stripeEventId, sessionId: projection.stripeObjectId, offeringId: projection.offeringId, requestDigest: projection.requestDigest, amountTotal: projection.amountTotal, currency: projection.currency, paymentStatus: projection.paymentStatus, status: projection.status, stripeMode: projection.livemode ? "live" : "test", paymentIntentId: projection.paymentIntentId, createdAt: projection.created });
-    const claimed = typeof result === "string" ? result : result?.disposition;
-    if (claimed === "rejected") return json({ error: "payment-does-not-match-checkout-intent" }, 409);
-    if (!["claimed", "duplicate", "duplicate-session"].includes(claimed)) return json({ error: "fulfillment-store-unavailable" }, 503);
-    return json({ accepted: true, duplicate: claimed === "duplicate" || claimed === "duplicate-session" });
-  }
 
   // One entitlement as a TUFTE storefront tile: what it is, where it came from, and its downloads.
   async function entitlementTile(entitlement, env, { extraActions = [], note } = {}) {
@@ -451,7 +436,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const url = new URL(request.url);
     // Stripe posts without a browser origin, so its webhook stands outside the
     // storefront application's same-origin action guard.
-    if (request.method === "POST" && url.pathname === path.webhook) return webhook(request, env);
+    if (request.method === "POST" && url.pathname === path.webhook) return fulfillStripeCheckoutWebhook(request, env);
     // A download is bytes for any client, never an HTML-or-JSON page.
     if (request.method === "GET" && url.pathname.startsWith(path.download)) return download(url.pathname.slice(path.download.length), env);
     // The gift API answers a house agent in JSON, outside the browser application.
@@ -460,3 +445,4 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     return application.fetch(request, { capabilities: { env, reader: readerOf(request, env) } });
   } };
 }
+
