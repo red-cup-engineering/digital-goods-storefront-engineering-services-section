@@ -202,6 +202,21 @@ test("stripeOfferingFor projects the catalog offering into the stripe-services-s
   });
 });
 
+test("stripeOfferingFor retains the product owner's policy references without inventing defaults", () => {
+  const original = liveOffering({
+    terms: "customer-contract:book:v3", taxPolicy: "tax-policy:book:v2",
+    refundPolicy: "refund-policy:book:v1",
+  });
+  const projected = stripeOfferingFor(original);
+  assert.equal(projected.terms, original.terms);
+  assert.equal(projected.taxPolicy, original.taxPolicy);
+  assert.equal(projected.refundPolicy, original.refundPolicy);
+  const missing = stripeOfferingFor(liveOffering());
+  for (const field of ["terms", "taxPolicy", "refundPolicy"]) {
+    assert.equal(Object.hasOwn(missing, field), false);
+  }
+});
+
 test("stripeOfferingFor maps any non-live status to test-only", () => {
   assert.equal(stripeOfferingFor(liveOffering({ status: "test-only" })).status, "test-only");
 });

@@ -216,6 +216,12 @@ export function stripeOfferingFor(offering) {
     description: offering.blurb ?? offering.title,
     quantity: { minimum: 1, maximum: 1 },
     beneficiarySettlement: offering.line,
+    // Preserve the product owner\'s existing policy evidence through the single
+    // catalog-to-Stripe projection. Missing policies remain missing and are
+    // refused by Stripe live admission; never invent default customer terms.
+    ...(typeof offering.terms === "string" ? { terms: offering.terms } : {}),
+    ...(typeof offering.taxPolicy === "string" ? { taxPolicy: offering.taxPolicy } : {}),
+    ...(typeof offering.refundPolicy === "string" ? { refundPolicy: offering.refundPolicy } : {}),
   };
 }
 
