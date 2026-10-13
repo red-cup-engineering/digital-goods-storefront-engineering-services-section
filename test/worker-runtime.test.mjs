@@ -219,9 +219,13 @@ test("a house agent gives books through the gift API with its key; a reference n
   const again = await api("", ask);
   assert.equal(again.status, 200);
   assert.deepEqual(await again.json(), { ...given, disposition: "duplicate" });
+  assert.equal((await api("", { method: "POST", body: JSON.stringify({
+    offering: "field-guide", email: "other@example.test", reference: "campaign/reviewer",
+  }) })).status, 409, "one reference cannot transfer a gift to another address");
   assert.match(await (await shop().fetch(new Request(given.url), env)).text(), /addressed to reviewer@example.test/);
   assert.equal((await (await api(`/${given.id}`)).json()).status, "active");
   assert.equal((await api(`/${given.id}/revoke`, { method: "POST", body: "{}" })).status, 200);
+  assert.equal((await api("", ask)).status, 410, "retry cannot resurrect a withdrawn gift");
   assert.equal((await shop().fetch(new Request(given.url), env)).status, 410);
 });
 

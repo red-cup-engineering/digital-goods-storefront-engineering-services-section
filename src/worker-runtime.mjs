@@ -338,6 +338,16 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       const id = input.reference ? await referencedGiftId(as, input.reference) : `gift-${crypto.randomUUID()}`;
       const granted = await env.fulfillment.grantEntitlement({ id, offeringId: item.id, release: item.release, recipientEmail: recipient, grantedBy: as, note: String(input.note ?? "").trim(), createdAt: new Date().toISOString() });
       if (granted.failed && granted.disposition !== "duplicate") return json({ error: "the gift could not be recorded" }, 503);
+      if (granted.disposition === "duplicate") {
+        const existing = await env.fulfillment.getEntitlement(id);
+        // A deterministic reference may never be reused to gift a different
+        // book or recipient, nor to resurrect a withdrawn entitlement.
+        if (!existing || existing.kind !== "gift" || existing.grantedBy !== as
+          || existing.offeringId !== item.id || existing.recipientEmail !== recipient) {
+          return json({ error: "the reference already belongs to another gift" }, 409);
+        }
+        if (existing.status !== "active") return json({ error: "the referenced gift was withdrawn" }, 410);
+      }
       return json({ id, url: `${origin}${path.gifts}/${id}`, offering: item.id, disposition: granted.disposition ?? "granted" }, granted.disposition === "duplicate" ? 200 : 201);
     }
     const [id, action] = rest.slice(1).split("/");
