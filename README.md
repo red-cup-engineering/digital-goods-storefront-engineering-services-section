@@ -57,6 +57,109 @@ own catalog, so the catalog is the one source of truth.
 
 The design is in `engineering-services-section/content/text/documents/articles/notes/2026/09/27/2026-09-27-note-on-the-human-storefront.md`.
 
+## Buyer-specific commissioned-work contract — qualified demand, NOT implemented
+
+The existing `src/paid-release.mjs` publishes **one immutable edition per
+offering**, by `goods/<offeringId>/release.json`. The existing
+`src/durable-fulfillment.mjs` stores checkout sessions, verified payment
+events, account-bound grants and revocations; it does **not** contract, execute,
+track or deliver buyer-specific work. Neither mechanism may be represented as
+a working personalized review, commissioned illustration, report or other
+made-to-order purchase. In particular, changing the offering-wide release
+pointer for each customer's output would disclose or substitute another
+customer's purchased result. Preserve fixed-goods delivery unchanged.
+
+**Demand and current first consumer:** Causeway Public Games proposes selling
+one recoverable Deep Review of a verified 9×9 or 13×13 Go game at a **test
+price** of $2.99. Its original customer requirement and Red Cup's
+`weiqi-commercial-game-srs.md` (WG-SRS-008/009/013) and game HLD/LLD are
+candidate inputs, not independent admission. This is a reusable **commerce
+supplier requirement**, not a request for Weiqi to implement payment,
+entitlement, title or job scheduling locally. Another valid consumer would
+be one named buyer's commissioned creator/research deliverable, whose unique
+content must likewise never appear as another buyer's fixed release.
+
+Before an offer is armed, the source-owning Web Commerce engineer shall
+independently admit a distinct SRS, architecture and detailed design for
+commissioned work through the normal requirements → SRS → HLD → LLD →
+native Data/Code fabrication process. These are the necessary **behavioral
+contracts** for that admission; this README does not constitute admission
+and authorizes no new endpoint, code or live sale:
+
+1. **Offer/capacity.** One authorized merchant shall name its actual payable
+   price, currency, beneficiary terms, service-level remedy, cancellation/
+   refund policy, rights and territories, immutable work-input eligibility,
+   licensed production capability, bounded resource/latency budget and
+   evidence of presently reservable capacity. An unfunded, unlicensed,
+   unavailable or nonpositive-contribution offer refuses charging rather
+   than taking payment for unfulfillable work.
+2. **Distinct identities.** A durable commissioned-work identity shall bind
+   the exact source/input digest and version, buyer principal, merchant,
+   quoted offer revision, Stripe Checkout Session, approved production
+   specification and delivery entitlement. The checkout identity is **not**
+   the source game identity, worker attempt, payment-event ID or generated
+   result digest. A repeat exact intent can recover its original work;
+   reusing any identity with a different buyer, input, merchant, price or
+   requested effect refuses.
+3. **Shared payment and fulfillment authority.** The existing verified
+   Stripe checkout/claim semantics and the **same** durable-fulfillment
+   authority shall bind payment to exactly one customer-specific obligation.
+   A browser redirect, payment-event duplicate or bare downloadable SKU
+   never starts an authorized paid entitlement. One work has at most one
+   active paid right; provider retries, cancellation and refund cannot
+   mint additional work or customer access. Preserve gift, fixed release,
+   review-copy and legacy checkout contracts without interpreting them as
+   commissioned-work grants.
+4. **Execution and result.** A qualified process-capable supplier accepts a
+   bounded job carrying immutable, authenticated input, actual model/tool
+   provenance, commercial rights and resource ceiling. It may retry after
+   crashes, but an accepted work can publish **one authoritative
+   content-identified result**, after the domain's correctness and
+   completeness assay. Do not equate exactly-once publication with
+   exactly-once external computation. A work can be honestly pending,
+   fulfilled, canceled, refund-pending or failed; a timeout remains
+   uncertain until the original work and provider effect are read back.
+   Neither an unconfirmed worker response nor a staged empty pointer
+   counts as fulfillment.
+5. **Private delivery and recovery.** The existing buyer identity/
+   entitlement verifier shall authorize retrieval of the exact result
+   through a second independent session. A result is referenced by its
+   commissioned-work identity and immutable content digest, **never**
+   through the offering-wide `release.json`. Storage and private result
+   access must refuse another authenticated buyer, guessed work ID, swapped
+   result digest, revoked grant, refunded charge and an old authorization;
+   a public bucket path or generic download token cannot bypass the
+   entitlement. The customer can revisit/export the accepted output
+   without purchasing another copy.
+6. **Economic and operator receiving.** Reconcile provider-confirmed gross
+   receipts, refunds, fee/chargeback, licensed production cost, job CPU/
+   model/network/storage, support and rights expense against the same
+   merchant order and commission. Distinguish reserved work, executed
+   work, actual customer retrieval and money settlement. Never count a
+   sample result, forged account, test charge, configured provider or
+   source test as an independently delivered sale or positive profit.
+
+**Mandatory counterexamples before native fabrication:** two buyers of the
+same SKU must receive two distinct correct private outputs; an exact
+checkout/webhook replay must create no second charge/work/grant; a repeat
+identifier with different customer/input must refuse; a forged, missing or
+refunded payment must create no usable result; a crash between external
+execution and publication must reattach to its original work; a failed job
+must resolve through the original financial obligation; a fixed EPUB/PDF
+purchase must still resolve its original offering-wide immutable edition;
+a distinct non-Weiqi commissioned customer must use the **same** shared
+supplier contract. Test caller identity at the actual Worker/DO boundary,
+not merely a browser view. The first Weiqi commercial receiving additionally
+requires a real completed legal match, paid review, immutable delivered
+report, second-device reopen and independently reconciled net contribution.
+
+**Stage boundary:** this is an upstream supplier contract correction only.
+`src/durable-fulfillment.mjs`, `src/paid-release.mjs`, the static Go PWA
+and all installed payment providers remain unchanged; no new commissioned
+work, profitable sale, backend admission or deployed effect is claimed.
+Source integration and live buyer receiving remain explicit subsequent
+obligations owned by competent Engineering, Operations and Public offices.
+
 ## Five-custody thread
 
 - **Science**: none — this is applied checkout/delivery engineering, not
