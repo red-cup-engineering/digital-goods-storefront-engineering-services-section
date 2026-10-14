@@ -121,3 +121,54 @@ test("body bounds are enforced before Stripe signature processing", async () => 
   const f = await fixture();
   assert.equal((await fulfillStripeCheckoutWebhook(new Request("https://shop.test/webhooks/stripe", { method: "POST", body: "x".repeat(1024 * 1024 + 1) }), f.env)).status, 413);
 });
+
+test("streamed Stripe webhook refuses oversize bytes before signature and durable receiving", async () => {
+  const f = await fixture();
+  const chunk = new Uint8Array(256 * 1024).fill(0x78);
+  const body = new ReadableStream({ start(controller) {
+    for (let n = 0; n < 5; n++) controller.enqueue(chunk);
+    controller.close();
+  } });
+  const request = new Request("https://shop.test/webhooks/stripe", { method: "POST",
+    body, duplex: "half" });
+  const response = await fulfillStripeCheckoutWebhook(request, f.env);
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "stripe-webhook-body-too-large" });
+  assert.equal(await f.fulfillment.getEntitlement(checkout.sessionId), null);
+});
+
+test("streamed Stripe webhook retains exact signed multibyte UTF-8 across chunks", async () => {
+  const f = await fixture();
+  const paid = event("checkout.session.async_payment_succeeded",
+    { metadata: { offering_id: checkout.offeringId, request_digest: checkout.requestDigest, memo: "雪" } });
+  const rawBody = JSON.stringify(paid);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const encoded = new TextEncoder().encode(rawBody), split = encoded.indexOf(0xe9) + 1;
+  assert.ok(split > 0);
+  const body = new ReadableStream({ start(controller) {
+    controller.enqueue(encoded.slice(0, split));
+    controller.enqueue(encoded.slice(split));
+    controller.close();
+  } });
+  const request = new Request("https://shop.test/webhooks/stripe", { method: "POST",
+    headers: { "stripe-signature": `t=${timestamp},v1=${signature}` },
+    body, duplex: "half" });
+  const response = await fulfillStripeCheckoutWebhook(request, f.env);
+  assert.equal(response.status, 200);
+  assert.equal((await f.fulfillment.getEntitlement(checkout.sessionId)).status, "active");
+});
+
+test("malformed UTF-8 is not silently normalized into a valid signed Stripe event", async () => {
+  const f = await fixture();
+  const body = new ReadableStream({ start(controller) {
+    controller.enqueue(new Uint8Array([0xc3]));
+    controller.close();
+  } });
+  const request = new Request("https://shop.test/webhooks/stripe", { method: "POST",
+    body, duplex: "half" });
+  const response = await fulfillStripeCheckoutWebhook(request, f.env);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "invalid-json" });
+  assert.equal(await f.fulfillment.getEntitlement(checkout.sessionId), null);
+});
