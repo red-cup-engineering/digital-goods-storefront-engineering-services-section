@@ -11,7 +11,8 @@ function supportsStore(store) { return store && ["recordCheckout", "getCheckout"
 async function boundedStripeWebhookText(request) {
   const reader = request.body?.getReader();
   if (!reader) return { text: "" };
-  const decoder = new TextDecoder("utf-8", { fatal: true });
+  // Preserve leading BOM bytes through signature validation; JSON admission is separate.
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
   let totalBytes = 0, text = "";
   try {
     while (true) {
