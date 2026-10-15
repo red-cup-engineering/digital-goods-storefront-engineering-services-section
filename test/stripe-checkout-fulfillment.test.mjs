@@ -159,6 +159,31 @@ test("streamed Stripe webhook retains exact signed multibyte UTF-8 across chunks
   assert.equal((await f.fulfillment.getEntitlement(checkout.sessionId)).status, "active");
 });
 
+test("signed UTF-8 BOM is kept byte-exact until separate JSON admission", async () => {
+  const f = await fixture();
+  const rawBody = "\uFEFF" + JSON.stringify(event());
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const encoded = new TextEncoder().encode(rawBody);
+  assert.deepEqual([...encoded.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  const body = new ReadableStream({ start(controller) {
+    controller.enqueue(encoded.slice(0, 1));
+    controller.enqueue(encoded.slice(1, 2));
+    controller.enqueue(encoded.slice(2));
+    controller.close();
+  } });
+  const received = new Request("https://shop.test/webhooks/stripe", {
+    method: "POST", headers: { "stripe-signature": `t=${timestamp},v1=${signature}` },
+    body, duplex: "half",
+  });
+  const response = await fulfillStripeCheckoutWebhook(received, f.env);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "invalid-json" },
+    "signature accepts the original signed bytes; JSON separately refuses BOM text");
+  assert.equal(await f.fulfillment.getEntitlement(checkout.sessionId), null,
+    "invalid JSON cannot admit a paid entitlement");
+});
+
 test("malformed UTF-8 is not silently normalized into a valid signed Stripe event", async () => {
   const f = await fixture();
   const body = new ReadableStream({ start(controller) {
