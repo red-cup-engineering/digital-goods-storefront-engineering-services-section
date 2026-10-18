@@ -3,6 +3,11 @@
   "version": "0.4.2",
   "type": "module",
   "description": "The house digital-goods storefront: checkout-model, delivery, and receipt semantics usable by every product line (ebooks, newsletters, cohort, merch, briefing). Composes the card rail (stripe-services-section) rather than re-implementing it; catalog validation, view-model shaping, TUFTE storefront presentation, reader accounts (Google sign-in), gifts, stamped review copies and a library per account, paid-release delivery, HMAC download tokens (Web Crypto only, Worker-safe), and plain-JSON receipts.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/red-cup-engineering/computer-web-engineering-services-section.git",
+    "directory": "services/web-platform-services-section/services/web2-platform-services-section/services/web2-financial-platform-services-section/services/web2-payment-platform-services-section/services/digital-goods-storefront-services-section"
+  },
   "exports": {
     ".": "./src/digital-goods-storefront.mjs",
     "./digital-goods-storefront": "./src/digital-goods-storefront.mjs",
