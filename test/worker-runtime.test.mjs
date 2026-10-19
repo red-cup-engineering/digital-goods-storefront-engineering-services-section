@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import test from "node:test";
 
-import { createDigitalGoodsStorefrontWorker } from "../src/worker-runtime.mjs";
+import { createDigitalGoodsStorefrontWorker, createPublicShopCatalog } from "../src/worker-runtime.mjs";
 import { issueDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { createDurableFulfillment, DigitalGoodsFulfillment } from "../src/durable-fulfillment.mjs";
 import { referencedReviewCopyId, reviewCopyPointerKey } from "../src/review-copy.mjs";
@@ -306,9 +306,33 @@ test("a separate tenant serves public machine-readable Shop goods without privat
   const result = await runtime.fetch(new Request("https://tenant.example/catalog.json"),{});
   assert.equal(result.status,200);
   assert.match(result.headers.get("content-type"),/application\\/json/u);
-  assert.equal(result.headers.get("cache-control"),"no-store");
+  assert.equal(result.headers.get("cache-control"),"public, max-age=60");
   const body = await result.json();
+    assert.equal(result.headers.get("access-control-allow-origin"),"*");
   assert.equal(body.merchant.name,"Tenant");
   assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
   assert.ok(!/bankToken|Income:Private|internal\\/|"key"/u.test(JSON.stringify(body)));
+});
+
+test("generic Shop catalog serves browser Bazaar readers while refusing write methods", async () => {
+  const original = { merchant:{name:"Seller",legalBody:"seller",privateKey:"internal"},
+    offerings:[{id:"sku",title:"SKU",line:"Income:Private",status:"live",priceCents:250,
+      currency:"usd",release:"sku"}] };
+  const route = createPublicShopCatalog(original);
+  const resource = "https://seller.example/catalog.json";
+  const get = route.fetch(new Request(resource,{method:"GET"}));
+  assert.equal(get.status,200);
+  assert.equal(get.headers.get("access-control-allow-origin"),"*");
+  assert.deepEqual(await get.json(),route.readout);
+  assert.equal(JSON.stringify(route.readout).includes("Income:Private"),false);
+  const head = route.fetch(new Request(resource,{method:"HEAD"}));
+  assert.equal(head.status,200);
+  assert.equal(await head.text(),"");
+  const preflight = route.fetch(new Request(resource,{method:"OPTIONS"}));
+  assert.equal(preflight.status,204);
+  assert.match(preflight.headers.get("access-control-allow-methods"),/GET/u);
+  const denied = route.fetch(new Request(resource,{method:"POST"}));
+  assert.equal(denied.status,405);
+  assert.equal(denied.headers.get("allow"),"GET, HEAD, OPTIONS");
+  assert.equal(original.offerings[0].line,"Income:Private");
 });

@@ -10,6 +10,32 @@ import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid
 import { REVIEW_COPY_ID, admitReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
 import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
 
+/** Independently reusable public Shop HTTP catalog, safe for cross-origin Bazaar readers.
+ * Only source-qualified merchant product fields are exposed; payment, wallet
+ * and internal storage authority remain on the original merchant runtime. */
+export function createPublicShopCatalog(catalog) {
+  const readout = publicCatalog(catalog);
+  const body = JSON.stringify(readout);
+  const headers = {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=60",
+    "access-control-allow-origin": "*",
+    "x-content-type-options": "nosniff",
+  };
+  return Object.freeze({
+    readout,
+    fetch(request) {
+      if (!request || typeof request.method !== "string") throw new TypeError("public Shop catalog requires an HTTP request");
+      if (request.method === "GET") return new Response(body, { status: 200, headers });
+      if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: {
+        ...headers, "access-control-allow-methods": "GET, HEAD, OPTIONS",
+      }});
+      return new Response(null, { status: 405, headers: {...headers, allow:"GET, HEAD, OPTIONS"} });
+    },
+  });
+}
+
 const PAID = new Set(["live", "test-only"]);
 const GIFT_ID = /^gift-[0-9a-f-]{36}$/u;
 const MAX_API_BYTES = 16 * 1024;
@@ -65,7 +91,7 @@ function admitted(result) {
  * @returns {{fetch: (request: Request, env: object) => Promise<Response>, catalog: object}}
  */
 export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor, routes = {}, tokenTtlSeconds = 3600, storefront = {} }) {
-  const buyerCatalog = publicCatalog(catalog);
+  const publicBuyerCatalog = createPublicShopCatalog(catalog);
   if (!validOrigin(origin)) throw new TypeError("origin must be a canonical https origin");
   if (typeof buyerActor !== "string" || buyerActor.length === 0) throw new TypeError("buyerActor is required");
   const path = { catalog: "/", goods: "/goods/", checkout: "/checkout/", webhook: "/webhooks/stripe", thanks: "/thanks", download: "/download/", library: "/library", gifts: "/gifts", giftApi: "/api/gifts", reviewCopies: "/review-copies", reviewCopyApi: "/api/review-copies", signIn: "/oauth/login", callback: "/oauth/callback", signOut: "/oauth/logout", ...routes };
@@ -431,7 +457,6 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       { match: path.signIn, load: beginSignIn },
       { match: path.callback, load: finishSignIn },
       { match: path.signOut, load: signOut },
-      { match: "/catalog.json", load: () => json(buyerCatalog) },
     ],
     actions: [
       { match: `${path.checkout}:id`, run: checkout },
@@ -443,6 +468,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
 
   return { catalog, async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/catalog.json") return publicBuyerCatalog.fetch(request);
     // Stripe posts without a browser origin, so its webhook stands outside the
     // storefront application's same-origin action guard.
     if (request.method === "POST" && url.pathname === path.webhook) return fulfillStripeCheckoutWebhook(request, env);
