@@ -119,6 +119,11 @@ export function retailListingFor(offering, channel) {
   const studyGuide = book.profile === "study-guide";
   const blocks = [];
   const attention = [];
+  // A rendition without an actual EbookEditionAcceptance is source data,
+  // not the edition this publisher can responsibly submit to a retailer.
+  // Some historical books retain files even though no edition was accepted.
+  if (!book.edition?.record || !book.edition?.acceptedAt)
+    blocks.push("No accepted, revision-identified EbookEditionAcceptance is selected. The source must first receive an accepted edition and its exact files.");
   const fields = {
     title: offering.title,
     ...(offering.subtitle ? { subtitle: offering.subtitle } : {}),
