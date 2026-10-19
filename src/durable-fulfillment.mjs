@@ -48,8 +48,16 @@ export class DigitalGoodsFulfillment {
       if (!CHECKOUT_EVENTS.includes(eventType)) return reply({ disposition: "rejected" }, 409);
       if (await transaction.get(`event:${body.eventId}`)) return reply({ disposition: "duplicate" });
       const checkout = await transaction.get(`checkout:${body.sessionId}`);
-      const valid = checkout && body.paymentStatus === "paid" && body.status === "complete" && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency && checkout.stripeMode === body.stripeMode;
-      if (!valid) return reply({ disposition: "rejected" }, 409);
+      const matched = checkout && body.status === "complete" && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency && checkout.stripeMode === body.stripeMode;
+      if (!matched) return reply({ disposition: "rejected" }, 409);
+      // Stripe may complete Checkout before an asynchronous method is paid.
+      // Retain that original event without manufacturing an entitlement or
+      // requiring Stripe to retry a legitimate, still-unpaid completion.
+      if (eventType === "checkout.session.completed" && body.paymentStatus === "unpaid") {
+        await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, pending: true });
+        return reply({ disposition: "pending" });
+      }
+      if (body.paymentStatus !== "paid") return reply({ disposition: "rejected" }, 409);
       await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType });
       const entitlementKey = `entitlement:${body.sessionId}`; const existing = await transaction.get(entitlementKey);
       if (existing) return reply({ disposition: "duplicate-session" });

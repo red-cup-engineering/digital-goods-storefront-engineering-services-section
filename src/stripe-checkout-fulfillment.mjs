@@ -48,6 +48,7 @@ export async function fulfillStripeCheckoutWebhook(request, env) {
     const result = await env.fulfillment.claimPayment({ eventId: projection.stripeEventId, eventType: projection.eventType, sessionId: projection.stripeObjectId, offeringId: projection.offeringId, requestDigest: projection.requestDigest, amountTotal: projection.amountTotal, currency: projection.currency, paymentStatus: projection.paymentStatus, status: projection.status, stripeMode: projection.livemode ? "live" : "test", paymentIntentId: projection.paymentIntentId, createdAt: projection.created });
     const claimed = typeof result === "string" ? result : result?.disposition;
     if (claimed === "rejected") return json({ error: "payment-does-not-match-checkout-intent" }, 409);
+    if (claimed === "pending") return json({ accepted: true, pending: true });
     if (!["claimed", "duplicate", "duplicate-session"].includes(claimed)) return json({ error: "fulfillment-store-unavailable" }, 503);
     return json({ accepted: true, duplicate: claimed === "duplicate" || claimed === "duplicate-session" });
   }

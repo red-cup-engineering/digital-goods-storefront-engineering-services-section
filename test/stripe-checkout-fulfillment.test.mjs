@@ -35,9 +35,13 @@ test("a delayed paid event fulfills through the real Stripe signature and durabl
 test("unpaid completion cannot fulfill, then delayed success does", async () => {
   const f = await fixture();
   const pending = { ...event("checkout.session.completed", { payment_status: "unpaid" }), id: "evt_pending" };
-  assert.equal((await fulfillStripeCheckoutWebhook(request(pending), f.env)).status, 409);
+  const accepted = await fulfillStripeCheckoutWebhook(request(pending), f.env);
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(await accepted.json(), { accepted: true, pending: true });
   assert.equal(await f.fulfillment.getEntitlement(checkout.sessionId), null);
-  assert.equal(f.rows.has("event:evt_pending"), false);
+  assert.equal(f.rows.get("event:evt_pending")?.pending, true);
+  const repeated = await fulfillStripeCheckoutWebhook(request(pending), f.env);
+  assert.deepEqual(await repeated.json(), { accepted: true, duplicate: true });
   assert.equal((await fulfillStripeCheckoutWebhook(request(event()), f.env)).status, 200);
   assert.equal((await f.fulfillment.getEntitlement(checkout.sessionId)).status, "active");
 });
@@ -57,7 +61,7 @@ test("duplicate and differently identified successful events retain one entitlem
 test("late unpaid completion does not undo earlier delayed success", async () => {
   const f = await fixture(); await fulfillStripeCheckoutWebhook(request(event()), f.env);
   const late = { ...event("checkout.session.completed", { payment_status: "unpaid" }), id: "evt_late" };
-  assert.equal((await fulfillStripeCheckoutWebhook(request(late), f.env)).status, 409);
+  assert.equal((await fulfillStripeCheckoutWebhook(request(late), f.env)).status, 200);
   assert.equal((await f.fulfillment.getEntitlement(checkout.sessionId)).status, "active");
 });
 

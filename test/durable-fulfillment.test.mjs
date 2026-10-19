@@ -66,3 +66,26 @@ test("client fails closed on JSON 503, an unknown disposition, and a failed tran
   fail = false;
   assert.equal((await client.claimPayment(payment)).disposition, "claimed");
 });
+
+test("a pending Stripe completion is retained without delivering goods; a separately paid event delivers once", async () => {
+  const { runtime, rows } = object();
+  await call(runtime, "/checkout", checkout);
+  const pending = { ...payment, eventId: "evt_pending", eventType: "checkout.session.completed", paymentStatus: "unpaid" };
+  const first = await call(runtime, "/claim", pending);
+  assert.deepEqual(await first.json(), { disposition: "pending" });
+  assert.equal(rows.get("event:evt_pending")?.pending, true);
+  assert.equal(rows.has("entitlement:cs_test"), false);
+
+  const duplicate = await call(runtime, "/claim", pending);
+  assert.deepEqual(await duplicate.json(), { disposition: "duplicate" });
+  assert.equal((await call(runtime, "/claim", { ...pending, eventId: "evt_wrong_amount", amountTotal: 1 })).status, 409);
+  assert.equal((await call(runtime, "/claim", { ...pending, eventId: "evt_invalid_async", eventType: "checkout.session.async_payment_succeeded" })).status, 409);
+  assert.equal(rows.has("entitlement:cs_test"), false);
+
+  const success = await call(runtime, "/claim", { ...payment, eventId: "evt_success", eventType: "checkout.session.async_payment_succeeded" });
+  assert.deepEqual(await success.json(), { disposition: "claimed" });
+  assert.equal(rows.get("entitlement:cs_test")?.status, "active");
+  const late = await call(runtime, "/claim", { ...pending, eventId: "evt_late" });
+  assert.deepEqual(await late.json(), { disposition: "pending" });
+  assert.equal(rows.get("entitlement:cs_test")?.status, "active");
+});
