@@ -345,6 +345,6 @@ test("public Shop catalog is merchant-owned but hides storage, accounting and ma
   assert.equal(buyer.offerings[0].book.author,"Real Author");
   assert.equal(buyer.offerings[0].book.edition.files[0].sha256,"a".repeat(64));
   assert.equal(buyer.offerings[0].book.printEdition.cover.sha256,"c".repeat(64));
-  assert.ok(!/Income:Private|privateBank|internalRoot|internal\\/|storage\\/|manuscript|coverFile|"record"|"key"/u.test(JSON.stringify(buyer)));
+  assert.ok(!/Income:Private|privateBank|internalRoot|internal\/|storage\/|manuscript|coverFile|"record"|"key"/u.test(JSON.stringify(buyer)));
   assert.equal(original.offerings[0].goods[0].key,"storage/key");
 });
