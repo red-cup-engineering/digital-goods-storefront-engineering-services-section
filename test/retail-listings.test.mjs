@@ -89,3 +89,12 @@ test("historical files without accepted edition remain blocked on every retailer
   const unknown = { ...companion, book: { ...companion.book, edition: { ...companion.book.edition, record: undefined } } };
   assert.match(retailListingFor(unknown, "kdp").blocks.join(" "), /No accepted/u);
 });
+
+test("retailer-specific USD source does not invent prices for unsupported currency or missing cents", () => {
+  for (const changed of [
+    { ...companion, currency: "eur" },
+    { ...companion, priceCents: undefined },
+    { ...companion, priceCents: 900.5 },
+    { ...companion, priceCents: -1 },
+  ]) assert.throws(() => retailListingFor(changed, "kdp"), /source-qualified USD price/u);
+});
