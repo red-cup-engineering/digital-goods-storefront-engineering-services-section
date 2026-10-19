@@ -7,7 +7,7 @@ const edition = { digest: "ni:///sha-256;x", record: "editions/accepted.json", a
 const companion = {
   id: "companion", title: "Analysis, Course by Course", subtitle: "An Independent Study Companion to the Google Data Analytics Certificate",
   priceCents: 900, currency: "usd", cover: "/covers/companion.png", blurb: "A study companion.", keywords: ["data analytics", "Google certificate", "SQL"],
-  book: { profile: "study-guide", marks: ["Google", "Coursera"], subjects: ["COM021030"], coverFile: "section/dist/companion-cover.png", edition },
+  book: { author: "Example Author", publisher: "Example Publisher", profile: "study-guide", marks: ["Google", "Coursera"], subjects: ["COM021030"], coverFile: "section/dist/companion-cover.png", edition },
 };
 const handbook = {
   id: "handbook", title: "A Handbook", priceCents: 2900, currency: "usd", blurb: "A field guide.", keywords: ["agents"],
@@ -97,4 +97,18 @@ test("retailer-specific USD source does not invent prices for unsupported curren
     { ...companion, priceCents: 900.5 },
     { ...companion, priceCents: -1 },
   ]) assert.throws(() => retailListingFor(changed, "kdp"), /source-qualified USD price/u);
+});
+
+test("the original publisher/author source is required; shop merchant identity never fabricates it", () => {
+  const source = { ...companion, book: { ...companion.book, author: undefined, publisher: undefined } };
+  for (const channel of RETAIL_CHANNELS) {
+    const result = retailListingFor(source, channel);
+    assert.equal(result.fields.author, null);
+    assert.equal(result.fields.publisher, null);
+    assert.ok(result.blocks.some(block => /No source-defined author/u.test(block)), channel);
+    assert.ok(result.blocks.some(block => /No source-defined publisher/u.test(block)), channel);
+  }
+  const apple = retailListingFor(source, "apple-books");
+  assert.ok(apple.fields.contributors.every(entry => !/Author: null|Author: undefined/u.test(entry)));
+  assert.equal(apple.fields.contributors.some(entry => entry.startsWith("Author:")), false);
 });
