@@ -159,6 +159,8 @@ test("the catalog tells a reader card checkout is not open, offers x402, and sho
   const closed = await (await shop().fetch(new Request("https://shop.test/goods/field-guide"), readerEnv(store, { accounts: {} }))).text();
   assert.match(closed, /Card checkout opens soon/);
   assert.match(closed, /href="https:\/\/market.test\/#field-guide"/);
+  assert.match(closed, /Explore x402 offer/);
+  assert.doesNotMatch(closed, /Buy with USDC over x402/);
   assert.doesNotMatch(closed, /Sign in/);
   assert.match(closed, /"@type":"Book"/);
   const open = await (await shop().fetch(new Request("https://shop.test/"), readerEnv(store))).text();
@@ -312,6 +314,48 @@ test("a separate tenant serves public machine-readable Shop goods without privat
   assert.equal(body.merchant.name,"Tenant");
   assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
   assert.ok(!/bankToken|Income:Private|internal\\/|"key"/u.test(JSON.stringify(body)));
+});
+
+test("human Shop and public agent catalog share sellable-first selection with honest checkout readiness", async () => {
+  const seller = {
+    merchant: { name: "Seller", legalBody: "seller", privateKey: "keep-private" },
+    offerings: [
+      { id: "future", title: "Future Book", line: "education", status: "coming-soon" },
+      { id: "live-one", title: "Live One", line: "education", status: "live",
+        priceCents: 300, currency: "usd", release: "live-one" },
+      { id: "external", title: "Outside Seller", line: "outside",
+        status: "external", externalUrl: "https://seller.example/offer" },
+      { id: "live-two", title: "Live Two", line: "education", status: "live",
+        priceCents: 500, currency: "usd", release: "live-two" },
+      { id: "preview", title: "Preview", line: "education", status: "test-only",
+        priceCents: 100, currency: "usd", release: "preview" },
+    ],
+  };
+  const sourceOrder = seller.offerings.map(({ id }) => id);
+  const runtime = createDigitalGoodsStorefrontWorker({ catalog: seller,
+    origin: "https://seller.example", buyerActor: "urn:ame:seller" });
+  const store = memoryFulfillment();
+  const full = env(store);
+  const ready = await (await runtime.fetch(new Request("https://seller.example/catalog.json"), full)).json();
+  assert.deepEqual(ready.offerings.map(({ id }) => id),
+    ["live-one", "live-two", "external", "preview", "future"]);
+  assert.deepEqual(ready.offerings.filter(({ buyable }) => buyable).map(({ id }) => id),
+    ["live-one", "live-two", "preview"]);
+  const home = await (await runtime.fetch(new Request("https://seller.example/"), full)).text();
+  assert.ok(home.indexOf('href="/goods/live-one"') >= 0);
+  assert.ok(home.indexOf('href="/goods/future"') > home.indexOf('href="/goods/live-one"'));
+
+  const offline = env(store, { STRIPE_CUSTOMER_CONTRACT_TOKEN: undefined });
+  const closed = await (await runtime.fetch(new Request("https://seller.example/catalog.json"), offline)).json();
+  assert.deepEqual(closed.offerings.map(({ id }) => id),
+    ["external", "live-one", "live-two", "preview", "future"]);
+  assert.equal(closed.offerings.some(({ buyable }) => buyable), false);
+  assert.equal(closed.offerings.find(({ id }) => id === "future").status, "coming-soon");
+  assert.ok(!JSON.stringify(closed).includes("keep-private"));
+  const closedHome = await (await runtime.fetch(new Request("https://seller.example/"), offline)).text();
+  assert.ok(closedHome.indexOf('href="/goods/external"') >= 0);
+  assert.ok(closedHome.indexOf('href="/goods/live-one"') > closedHome.indexOf('href="/goods/external"'));
+  assert.deepEqual(seller.offerings.map(({ id }) => id), sourceOrder);
 });
 
 test("generic Shop catalog serves browser Bazaar readers while refusing write methods", async () => {
