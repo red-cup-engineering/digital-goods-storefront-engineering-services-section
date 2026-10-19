@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   catalogModel,
+  prioritizeStorefrontOfferings,
   bookLanguageTag,
   issueDownloadToken,
   receiptFor,
@@ -146,6 +147,26 @@ test("catalogModel state for coming-soon and external ignores checkoutArmed", ()
 test("catalogModel default checkoutArmed is false", () => {
   const model = catalogModel(catalogOf(liveOffering()));
   assert.equal(model.offerings[0].buyable, false);
+});
+
+test("storefront prioritizes real live checkout ahead of announcements without rewriting publisher order", () => {
+  const seller = catalogOf(
+    { id: "future", title: "Future Book", line: "education", status: "coming-soon" },
+    liveOffering({ id: "book-a" }),
+    { id: "elsewhere", title: "Other Merchant", line: "market", status: "external", externalUrl: "https://seller.example/item" },
+    liveOffering({ id: "book-b" }),
+    liveOffering({ id: "preview", status: "test-only" }),
+  );
+  const sourceOrder = seller.offerings.map(({ id }) => id);
+  const armed = prioritizeStorefrontOfferings(catalogModel(seller, { checkoutArmed: true }).offerings);
+  assert.deepEqual(armed.map(({ id }) => id), ["book-a", "book-b", "elsewhere", "preview", "future"]);
+  assert.deepEqual(armed.filter((item) => item.buyable).map(({ id }) => id), ["book-a", "book-b", "preview"]);
+  assert.equal(armed.find((item) => item.id === "future").buyable, false);
+
+  const unarmed = prioritizeStorefrontOfferings(catalogModel(seller, { checkoutArmed: false }).offerings);
+  assert.deepEqual(unarmed.map(({ id }) => id), ["elsewhere", "book-a", "book-b", "preview", "future"]);
+  assert.equal(unarmed.some(({ buyable }) => buyable), false);
+  assert.deepEqual(seller.offerings.map(({ id }) => id), sourceOrder, "original merchant/catalog order is immutable");
 });
 
 // --- rendering -----------------------------------------------------------
