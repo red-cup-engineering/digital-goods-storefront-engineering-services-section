@@ -3,7 +3,7 @@ import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, re
 import { tuftePage, tufteRedirect } from "@red-cup-engineering/web-page-tiling-engine/application";
 import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/storefront";
 import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
-import { catalogModel, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
+import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
@@ -19,12 +19,12 @@ export function createPublicShopCatalog(catalog, { checkoutArmed = false } = {})
   // different. Reuse the human storefront's existing purchase affordance,
   // retaining the original privacy-filtered merchant and product contracts.
   const original = publicCatalog(catalog);
-  const buying = new Map(catalogModel(catalog, { checkoutArmed }).offerings
-    .map((offering) => [offering.id, offering.buyable]));
+  const ranked = prioritizeStorefrontOfferings(catalogModel(catalog, { checkoutArmed }).offerings);
+  const sourcePublicOfferings = new Map(original.offerings.map((offering) => [offering.id, offering]));
   const readout = {
     ...original,
-    offerings: original.offerings.map((offering) => ({
-      ...offering, buyable: buying.get(offering.id) === true,
+    offerings: ranked.map(({ id, buyable }) => ({
+      ...sourcePublicOfferings.get(id), buyable,
     })),
   };
   const body = JSON.stringify(readout);
@@ -168,7 +168,8 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     if (PAID.has(item.status)) {
       if (item.buyable) actions.push({ kind: "form", form: { action: `${path.checkout}${item.id}`, method: "post", submitters: [{ label: `Buy — ${displayPrice(item.priceCents, item.currency)}` }] } });
       else actions.push({ kind: "unavailable", label: "Card checkout opens soon", reason: "card payments are not connected yet" });
-      if (item.agentOfferUrl) actions.push({ kind: "link", label: "Buy with USDC over x402", href: item.agentOfferUrl });
+      // A catalog link is not proof that the remote seller can actually settle.
+      if (item.agentOfferUrl) actions.push({ kind: "link", label: "Explore x402 offer", href: item.agentOfferUrl });
     } else if (item.status === "external") actions.push({ kind: "link", label: item.state[0].toUpperCase() + item.state.slice(1), href: item.externalUrl });
     else if (item.status === "coming-soon") actions.push({ kind: "unavailable", label: "Coming soon" });
     if (giving && item.release) actions.push({ kind: "link", label: "Give this book", href: `${path.gifts}?offering=${encodeURIComponent(item.id)}` });
@@ -179,7 +180,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const { env, reader } = context.capabilities;
     const owned = new Set(reader && supportsAccounts(env.fulfillment) ? (await env.fulfillment.listAccount(reader.email)).filter((entry) => entry.status === "active").map((entry) => entry.offeringId) : []);
     const giving = gifter(reader, env);
-    const items = catalogModel(catalog, { checkoutArmed: armed(env) }).offerings.map((item) => {
+    const items = prioritizeStorefrontOfferings(catalogModel(catalog, { checkoutArmed: armed(env) }).offerings).map((item) => {
       const href = `${path.goods}${item.id}`;
       return { ...storefrontItemFor(item, { actions: actionsFor(item, { env, owned, giving }), cover: item.cover ?? undefined }), metadata: {
         canonical: `${origin}${href}`, type: item.book ? "book" : "product", siteName: title,
