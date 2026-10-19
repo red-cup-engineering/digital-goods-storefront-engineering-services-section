@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -46,26 +47,70 @@ export function renderRetailListings(listings, { source }) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-/**
- * Derive every book's retail listings from a compiled catalog module and write them as a record and a guide.
- * @param {string} catalogModule path to a module whose default export is a compiled catalog
- * @param {string} recordPath the JSON record to write
- * @param {string} guidePath the Markdown guide to write
- */
-export async function deriveRetailListings(catalogModule, recordPath, guidePath) {
-  const catalog = (await import(pathToFileURL(resolve(catalogModule)).href)).default;
+/** Retain the producer's full native retailer-specific fields but make the
+ * exported resource unambiguously a set of human submission drafts, not
+ * completed retailer listings. The only source is the actually compiled
+ * Shop catalog; contentDigest pins its exact bytes, not their authority. */
+export function retailerSubmissionDraftResource(listings, sourceCatalog) {
+  const validSource = sourceCatalog && typeof sourceCatalog === "object"
+    && /^[a-z0-9][a-z0-9.-]*\/[a-z0-9][a-z0-9.-]*$/u.test(sourceCatalog.repository ?? "")
+    && typeof sourceCatalog.path === "string"
+    && /^[a-z0-9][a-z0-9/_\-.]*\.mjs$/u.test(sourceCatalog.path)
+    && !sourceCatalog.path.split("/").includes("..")
+    && /^ni:\/\/\/sha-256;[a-zA-Z0-9_-]{43}$/u.test(sourceCatalog.contentDigest ?? "");
+  if (!validSource) throw new TypeError("retailer submissions need a repository, package-relative module path and exact SHA-256 source digest");
+  if (!Array.isArray(listings)) throw new TypeError("retailer submission drafts require original native listing data");
+  return Object.freeze({
+    recordKind: "retailer-submission-draft-collection",
+    schemaVersion: 2,
+    disposition: "proposed-not-submitted",
+    sourceCatalog: { ...sourceCatalog },
+    bookSubmissionDrafts: listings.map(({ id, title, listings: channels }) => ({
+      bookOfferingId: id,
+      bookTitle: title,
+      retailerSubmissionDrafts: channels.map(({ channel, name, fields, blocks, attention }) => ({
+        retailerCode: channel,
+        retailerName: name,
+        proposedSubmissionFields: fields,
+        submissionBlockers: blocks,
+        operatorReviewNotes: attention,
+        disposition: blocks.length ? "blocked" : "candidate-needs-publisher-review",
+      })),
+    })),
+  });
+}
+
+/** Derive the current Shop source's original retailer forms, then write
+ * one typed JSON readout and one human form-filling guide. The source owner
+ * MUST name its repository-relative original module; never leak or invent
+ * an arbitrary host checkout path as a transport identity. */
+export async function deriveRetailListings(catalogModule, recordPath, guidePath, {
+  repository, path,
+} = {}) {
+  const originalModule = resolve(catalogModule);
+  const contentDigest = "ni:///sha-256;" + createHash("sha256").update(readFileSync(originalModule)).digest("base64url");
+  const sourceCatalog = { repository, path, contentDigest };
+  const catalog = (await import(pathToFileURL(originalModule).href)).default;
   const listings = retailListings(catalog);
-  // Recorded relative to the services root, like every other path in the listings, whatever the caller's working directory.
-  const source = resolve(catalogModule).replace(/^.*?\/lib\/emsenn\/services\/561-group\/services\//u, "");
-  writeFileSync(recordPath, `${JSON.stringify({ type: "BookRetailListings", version: 1, source, books: listings }, null, 2)}\n`);
-  writeFileSync(guidePath, renderRetailListings(listings, { source: `\`${source}\`` }));
-  return listings;
+  const resource = retailerSubmissionDraftResource(listings, sourceCatalog);
+  const sourceLabel = "\x60" + repository + "/" + path + "\x60 (exact source bytes: \x60" + contentDigest + "\x60)";
+  // These two files are derived readouts; publishing to any retailer is a
+  // separate authenticated, authorized, provider-specific effect.
+  writeFileSync(recordPath, JSON.stringify(resource, null, 2) + "\n");
+  writeFileSync(guidePath, renderRetailListings(listings, { source: sourceLabel }));
+  return resource;
 }
 
 if (import.meta.main) {
-  const [catalogModule, recordPath, guidePath] = process.argv.slice(2);
-  if (!catalogModule || !recordPath || !guidePath) throw new Error("usage: derive-retail-listings.mjs <compiled-catalog.mjs> <record.json> <guide.md>");
-  const listings = await deriveRetailListings(catalogModule, recordPath, guidePath);
-  const counts = listings.flatMap((book) => book.listings).reduce((sum, listing) => ({ blocks: sum.blocks + listing.blocks.length, attention: sum.attention + listing.attention.length }), { blocks: 0, attention: 0 });
-  console.log(JSON.stringify({ books: listings.length, ...counts }));
+  const [catalogModule, recordPath, guidePath, repository, sourcePath] = process.argv.slice(2);
+  if (!catalogModule || !recordPath || !guidePath || !repository || !sourcePath)
+    throw new Error("usage: derive-retail-listings.mjs <compiled-catalog.mjs> <record.json> <guide.md> <source-owner/repository> <package-relative-source-path>");
+  const resource = await deriveRetailListings(catalogModule, recordPath, guidePath, { repository, path: sourcePath });
+  const drafts = resource.bookSubmissionDrafts.flatMap(book => book.retailerSubmissionDrafts);
+  console.log(JSON.stringify({
+    books: resource.bookSubmissionDrafts.length,
+    proposals: drafts.length,
+    blocked: drafts.filter(d => d.disposition === "blocked").length,
+    sourceCatalog: resource.sourceCatalog,
+  }));
 }
