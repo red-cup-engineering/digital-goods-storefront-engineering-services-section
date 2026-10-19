@@ -251,6 +251,25 @@ export function catalogModel(catalog, { checkoutArmed = false } = {}) {
 
 
 /**
+ * Select a buyer-useful stable product order without modifying the seller's
+ * canonical catalog or confusing advertised release with payment readiness.
+ * An actually armed live product leads. An external merchant link is a
+ * separate purchase path. Unarmed live products remain discoverable, while
+ * preview/test-only and coming-soon entries cannot crowd out those paths.
+ * This is storefront commerce policy, not generic Data sorting or payment.
+ */
+export function prioritizeStorefrontOfferings(offerings) {
+  const priority = (item) => item.status === "live" && item.buyable === true ? 0
+    : item.status === "external" && typeof item.externalUrl === "string" && item.externalUrl.length > 0 ? 1
+    : item.status === "live" ? 2
+    : item.status === "test-only" && item.buyable === true ? 3
+    : item.status === "test-only" ? 4 : 5;
+  return offerings.map((offering, position) => ({ offering, position }))
+    .sort((left, right) => priority(left.offering) - priority(right.offering) || left.position - right.position)
+    .map(({ offering }) => offering);
+}
+
+/**
  * Derives the stripe-services-section fixed-offering shape from one
  * catalog offering — this storefront's catalog is the single source; the
  * card rail's fixed-offerings list is a projection of it, never a second
