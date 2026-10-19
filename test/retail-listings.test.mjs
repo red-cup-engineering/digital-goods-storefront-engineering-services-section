@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { aiDisclosureFor, AUDIOBOOK_RETAIL_CHANNELS, RETAIL_CHANNELS, retailDescription, retailListingFor, retailListings } from "../src/retail-listings.mjs";
 
-const edition = { digest: "ni:///sha-256;x", proof: { errors: 1, corrections: 2, notes: 3 }, files: [{ format: "EPUB", bytes: 10, sha256: "a".repeat(64), path: "section/dist/book.epub" }] };
+const edition = { digest: "ni:///sha-256;x", record: "editions/accepted.json", acceptedAt: "2026-09-27T00:00:00Z", proof: { errors: 1, corrections: 2, notes: 3 }, files: [{ format: "EPUB", bytes: 10, sha256: "a".repeat(64), path: "section/dist/book.epub" }] };
 const companion = {
   id: "companion", title: "Analysis, Course by Course", subtitle: "An Independent Study Companion to the Google Data Analytics Certificate",
   priceCents: 900, currency: "usd", cover: "/covers/companion.png", blurb: "A study companion.", keywords: ["data analytics", "Google certificate", "SQL"],
@@ -23,8 +23,8 @@ test("KDP refuses a title naming another's mark, keeps companions to the US, dro
   assert.equal(kdp.fields.royalty, "70%");
   assert.match(kdp.fields.kdpSelect, /^No/);
   const other = retailListingFor(companion, "kobo");
-  assert.equal(other.blocks.length, 0);
-  assert.match(other.attention[0], /independence statement/);
+  assert.equal(other.blocks.length, 1);
+  assert.match(other.blocks[0], /Kobo rejects books/u);
 });
 
 test("the description carries an independence statement exactly when a book names others' marks", () => {
@@ -77,4 +77,15 @@ test("all retail channel fields derive the same source book language as product 
   assert.equal(spanishRetail.fields.language,new Intl.DisplayNames(["en"],{type:"language"}).of("es-MX"));
   assert.notEqual(spanishRetail.fields.language,"English");
   assert.equal(retailListingFor(companion,"google-play-books").fields.language,"English");
+});
+
+// A compiled catalog may retain built files without any accepted edition.
+// A channel form draft must not turn those bytes into a publication receipt.
+test("historical files without accepted edition remain blocked on every retailer", () => {
+  for (const channel of RETAIL_CHANNELS) {
+    const out = retailListingFor(handbook, channel);
+    assert.ok(out.blocks.some(block => /No accepted, revision-identified EbookEditionAcceptance/u.test(block)), channel);
+  }
+  const unknown = { ...companion, book: { ...companion.book, edition: { ...companion.book.edition, record: undefined } } };
+  assert.match(retailListingFor(unknown, "kdp").blocks.join(" "), /No accepted/u);
 });
