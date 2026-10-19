@@ -8,6 +8,7 @@
 import { htmlElement as element } from "@red-cup-engineering/web-page-tiling-engine/composition";
 
 import { aiDisclosureFor } from "./retail-listings.mjs";
+import { bookLanguageTag } from "./digital-goods-storefront.mjs";
 
 const KIND_LABELS = Object.freeze({ book: "Books", merch: "Merch" });
 
@@ -92,7 +93,7 @@ export function structuredDataFor(offering, { origin, href, image }) {
     ...(offering.blurb ? { description: offering.blurb } : {}),
     url: `${origin}${href}`,
     ...(image ? { image: `${origin}${image}` } : {}),
-    ...(book ? { bookFormat: "https://schema.org/EBook", author, ...(book.publisher ? { publisher: { "@type": "Organization", name: book.publisher } } : {}), inLanguage: "en" } : {}),
+    ...(book ? { bookFormat: "https://schema.org/EBook", author, ...(book.publisher ? { publisher: { "@type": "Organization", name: book.publisher } } : {}), inLanguage: bookLanguageTag(book) } : {}),
     ...(book?.series ? { isPartOf: { "@type": "BookSeries", name: book.series.name }, position: book.series.number } : {}),
     ...(offer ? { offers: offer } : {}),
   };

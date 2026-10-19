@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   catalogModel,
+  bookLanguageTag,
   issueDownloadToken,
   receiptFor,
   stripeOfferingFor,
@@ -285,4 +286,23 @@ test("receiptFor shapes a plain-JSON receipt with no buyer personal data", () =>
   const serialized = JSON.stringify(receipt);
   assert.doesNotMatch(serialized, /email/i);
   assert.doesNotMatch(serialized, /card/i);
+});
+
+test("book language uses native BCP 47 canonical identity and refuses malformed metadata", () => {
+  assert.equal(bookLanguageTag(null), "en");
+  assert.equal(bookLanguageTag({language:"es-MX"}), "es-MX");
+  assert.equal(bookLanguageTag({language:"zh-hant-tw"}), "zh-Hant-TW");
+  assert.throws(() => bookLanguageTag({language:"not_a_tag"}), /BCP 47/);
+  assert.throws(() => bookLanguageTag({language:""}), /BCP 47/);
+  const bad=validateCatalog(catalogOf(liveOffering({book:{language:"bad_tag"}})));
+  assert.equal(bad.valid,false);
+  assert.ok(bad.errors.some(row=>row.path.includes("book.language")));
+});
+
+test("structured Book data carries the book's actual language rather than claiming English", () => {
+  const offering=liveOffering({book:{author:"A. Author",language:"es-MX"}});
+  const structured=structuredDataFor(offering,{origin:"https://shop.example",href:"/goods/multilingual"});
+  assert.equal(structured["@type"],"Book");
+  assert.equal(structured.inLanguage,"es-MX");
+  assert.equal(structuredDataFor(liveOffering({book:{}}),{origin:"https://shop.example",href:"/goods/english"}).inLanguage,"en");
 });

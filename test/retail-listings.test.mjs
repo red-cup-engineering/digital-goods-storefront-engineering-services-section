@@ -70,3 +70,10 @@ test("audiobook channel policy is structured first-party data, including restric
   assert.equal(AUDIOBOOK_RETAIL_CHANNELS.find(({ id }) => id === "acx").disposition, "refuses-house-synthesis");
   for (const channel of AUDIOBOOK_RETAIL_CHANNELS) assert.match(channel.source, /^https:\/\//u);
 });
+
+test("all retail channel fields derive the same source book language as product schema",()=>{
+  const spanish={...companion,book:{...companion.book,language:"es-MX"}};
+  const spanishRetail=retailListingFor(spanish,"google-play-books");
+  assert.equal(spanishRetail.fields.language,"Spanish (Mexico)");
+  assert.equal(retailListingFor(companion,"google-play-books").fields.language,"English");
+});

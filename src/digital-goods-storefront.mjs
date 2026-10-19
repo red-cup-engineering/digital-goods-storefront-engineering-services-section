@@ -14,6 +14,22 @@
 const OFFERING_STATUSES = new Set(["live", "test-only", "coming-soon", "external"]);
 const PAID_STATUSES = new Set(["live", "test-only"]);
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/** One source-derived BCP 47 language for books: use native Intl rather
+ * than a storefront-specific copy of the standard language-tag grammar.
+ * The pre-existing English-only catalog remains English by default.
+ */
+export function bookLanguageTag(book) {
+  const value=book?.language ?? "en";
+  if (typeof value!=="string" || !value.trim()) throw new TypeError("book.language must be a BCP 47 language tag");
+  try {
+    const [tag]=Intl.getCanonicalLocales(value);
+    if(!tag) throw new RangeError("empty language tag");
+    return tag;
+  } catch {
+    throw new TypeError("book.language must be a BCP 47 language tag");
+  }
+}
 const SHA256_HEX = /^[a-f0-9]{64}$/iu;
 
 function isNonEmptyString(value) {
@@ -99,6 +115,9 @@ function validateOffering(offering, index, seenIds, errors) {
   }
   if (offering.book !== undefined && (!offering.book || typeof offering.book !== "object" || Array.isArray(offering.book))) {
     errors.push({ path, message: "book must be an object" });
+  } else if (offering.book) {
+    try { bookLanguageTag(offering.book); }
+    catch { errors.push({ path: path + ".book.language", message: "book.language must be a BCP 47 language tag" }); }
   }
 }
 

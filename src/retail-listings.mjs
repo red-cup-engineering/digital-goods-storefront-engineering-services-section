@@ -24,6 +24,8 @@
  * pays 60% of list less printing from $9.99 and 50% below.
  */
 
+import { bookLanguageTag } from "./digital-goods-storefront.mjs";
+
 export const RETAIL_CHANNELS = Object.freeze(["kdp", "kdp-paperback", "kobo", "google-play-books", "apple-books", "barnes-noble-press", "leanpub"]);
 
 /** First-party channel policy facts for disclosed synthesized narration, checked 2026-09-27. */
@@ -125,7 +127,7 @@ export function retailListingFor(offering, channel) {
     ...(book.series?.within ? { subseries: seriesLabel(book.series) } : {}),
     author: book.author ?? "561 Group",
     publisher: book.publisher ?? "561 Group",
-    language: "English",
+    language: new Intl.DisplayNames(["en"], { type: "language" }).of(bookLanguageTag(book)),
     description: retailDescription(offering),
     subjects: book.subjects ?? [],
     listPriceUsd: dollars(price),
