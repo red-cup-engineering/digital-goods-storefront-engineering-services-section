@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +10,7 @@ import { renderCatalogToDirectory } from "../scripts/render-catalog.mjs";
 import { deriveStripeOfferings } from "../scripts/derive-stripe-offerings.mjs";
 import { issueDownloadTokenFromEnv } from "../scripts/issue-download-token.mjs";
 import { verifyDownloadToken } from "../src/digital-goods-storefront.mjs";
+import { deriveRetailListings, retailerSubmissionDraftResource } from "../scripts/derive-retail-listings.mjs";
 
 const CATALOG = {
   merchant: { name: "561 Group", legalBody: "emsenn" },
@@ -86,4 +88,73 @@ test("issueDownloadTokenFromEnv reads the secret from env and round-trips with v
 
 test("issueDownloadTokenFromEnv throws without the env secret", async () => {
   await assert.rejects(() => issueDownloadTokenFromEnv({ env: {}, offeringId: "x", sessionId: "y" }), /DIGITAL_GOODS_DOWNLOAD_SECRET/);
+});
+
+test("retailer submission resource replaces opaque output keys with scoped producer/consumer fields", () => {
+  const listed = [{
+    id: "book-1", title: "A Book",
+    listings: [{
+      channel: "kdp", name: "Amazon Kindle", fields: { title: "A Book", listPriceUsd: "9.00" },
+      blocks: [], attention: ["Publisher must independently submit the book."],
+    }],
+  }];
+  const sourceCatalog = {
+    repository: "causeway-services/shop.561.group", path: "src/compiled-catalog.mjs",
+    contentDigest: "ni:///sha-256;" + "a".repeat(43),
+  };
+  const result = retailerSubmissionDraftResource(listed, sourceCatalog);
+  assert.equal(result.recordKind, "retailer-submission-draft-collection");
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.disposition, "proposed-not-submitted");
+  assert.deepEqual(Object.keys(result), [
+    "recordKind", "schemaVersion", "disposition", "sourceCatalog", "bookSubmissionDrafts",
+  ]);
+  assert.equal(result.bookSubmissionDrafts[0].bookOfferingId, "book-1");
+  const candidate = result.bookSubmissionDrafts[0].retailerSubmissionDrafts[0];
+  assert.equal(candidate.retailerCode, "kdp");
+  assert.equal(candidate.disposition, "candidate-needs-publisher-review");
+  assert.equal(candidate.proposedSubmissionFields.listPriceUsd, "9.00");
+  assert.equal(candidate.operatorReviewNotes.length, 1);
+  assert.equal("fields" in candidate, false);
+  assert.equal("blocks" in candidate, false);
+  for (const rejected of [
+    { ...sourceCatalog, repository: "/tmp/machine" },
+    { ...sourceCatalog, path: "../../etc/passwd.mjs" },
+    { ...sourceCatalog, contentDigest: "unverified" },
+  ]) assert.throws(() => retailerSubmissionDraftResource(listed, rejected), TypeError);
+});
+
+test("original retailer producer reads a selected catalog and writes byte-pinned proposals plus human guide", async () => {
+  await withTempDir(async dir => {
+    const path = join(dir, "compiled-catalog.mjs"),
+      recordPath = join(dir, "retail-drafts.json"), guidePath = join(dir, "retail-guide.md");
+    const fixture = {
+      offerings: [{
+        id: "test-book", title: "Test Book", priceCents: 900, currency: "usd",
+        status: "live", blurb: "A source-qualified book.", keywords: ["study"],
+        book: { author: "Test Author", publisher: "Test Publisher",
+          coverFile: "books/test/cover.png", subjects: [],
+          edition: { record: "editions/test-acceptance.json", acceptedAt: "2026-09-27T00:00:00Z",
+            files: [{ format: "EPUB", path: "books/test/test.epub", sha256: "b".repeat(64) }] },
+        },
+      }],
+    };
+    const moduleBytes = "export default " + JSON.stringify(fixture) + ";\n";
+    writeFileSync(path, moduleBytes);
+    const generated = await deriveRetailListings(path, recordPath, guidePath, {
+      repository: "causeway-services/shop.561.group", path: "src/compiled-catalog.mjs",
+    });
+    const sourceDigest = "ni:///sha-256;" + createHash("sha256").update(moduleBytes).digest("base64url");
+    assert.equal(generated.sourceCatalog.contentDigest, sourceDigest);
+    assert.equal(generated.bookSubmissionDrafts.length, 1);
+    assert.equal(generated.bookSubmissionDrafts[0].retailerSubmissionDrafts.length, 7);
+    assert.deepEqual(JSON.parse(readFileSync(recordPath, "utf8")), generated);
+    const guide = readFileSync(guidePath, "utf8");
+    assert.match(guide, /# Book retail listings/u);
+    assert.ok(guide.includes(sourceDigest));
+    assert.ok(!readFileSync(recordPath, "utf8").includes(dir), "machine-local temp paths must not escape");
+    const kobo = generated.bookSubmissionDrafts[0].retailerSubmissionDrafts.find(x => x.retailerCode === "kobo");
+    assert.equal(kobo.disposition, "blocked");
+    assert.ok(kobo.submissionBlockers.length > 0);
+  });
 });
