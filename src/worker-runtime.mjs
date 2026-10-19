@@ -13,8 +13,19 @@ import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } 
 /** Independently reusable public Shop HTTP catalog, safe for cross-origin Bazaar readers.
  * Only source-qualified merchant product fields are exposed; payment, wallet
  * and internal storage authority remain on the original merchant runtime. */
-export function createPublicShopCatalog(catalog) {
-  const readout = publicCatalog(catalog);
+export function createPublicShopCatalog(catalog, { checkoutArmed = false } = {}) {
+  // Source release state and the currently armed purchasing action are
+  // different. Reuse the human storefront's existing purchase affordance,
+  // retaining the original privacy-filtered merchant and product contracts.
+  const original = publicCatalog(catalog);
+  const buying = new Map(catalogModel(catalog, { checkoutArmed }).offerings
+    .map((offering) => [offering.id, offering.buyable]));
+  const readout = {
+    ...original,
+    offerings: original.offerings.map((offering) => ({
+      ...offering, buyable: buying.get(offering.id) === true,
+    })),
+  };
   const body = JSON.stringify(readout);
   const headers = {
     "content-type": "application/json; charset=utf-8",
@@ -91,7 +102,7 @@ function admitted(result) {
  * @returns {{fetch: (request: Request, env: object) => Promise<Response>, catalog: object}}
  */
 export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor, routes = {}, tokenTtlSeconds = 3600, storefront = {} }) {
-  const publicBuyerCatalog = createPublicShopCatalog(catalog);
+  const publicBuyerCatalogs = new Map();
   if (!validOrigin(origin)) throw new TypeError("origin must be a canonical https origin");
   if (typeof buyerActor !== "string" || buyerActor.length === 0) throw new TypeError("buyerActor is required");
   const path = { catalog: "/", goods: "/goods/", checkout: "/checkout/", webhook: "/webhooks/stripe", thanks: "/thanks", download: "/download/", library: "/library", gifts: "/gifts", giftApi: "/api/gifts", reviewCopies: "/review-copies", reviewCopyApi: "/api/review-copies", signIn: "/oauth/login", callback: "/oauth/callback", signOut: "/oauth/logout", ...routes };
@@ -99,6 +110,16 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
   const offering = (id) => catalog.offerings.find((candidate) => candidate.id === id);
   const title = storefront.title ?? catalog.merchant?.name ?? "Storefront";
   const armed = (env) => { const state = readiness({ env, catalog: railCatalog }); return supportsStore(env.fulfillment) && env.goods && typeof env.goods.get === "function" && env.audit && typeof env.audit.record === "function" && typeof env.tokenSecret === "string" && env.tokenSecret.length > 0 && state.credential.present && state.webhookSecretPresent && state.customerContractTokenPresent; };
+  // Cache immutable bytes for the two capability states, never a Response.
+  // The deployment's current Stripe/fulfillment bindings choose the state
+  // at request time: a source-live book is not necessarily purchase-ready.
+  const publicBuyerCatalogFor = (env) => {
+    const checkoutArmed = armed(env ?? {});
+    if (!publicBuyerCatalogs.has(checkoutArmed)) {
+      publicBuyerCatalogs.set(checkoutArmed, createPublicShopCatalog(catalog, { checkoutArmed }));
+    }
+    return publicBuyerCatalogs.get(checkoutArmed);
+  };
 
   // Any verified Google account may sign in: an account here is a reader's
   // email, not admission to anything private.
@@ -468,7 +489,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
 
   return { catalog, async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/catalog.json") return publicBuyerCatalog.fetch(request);
+    if (url.pathname === "/catalog.json") return publicBuyerCatalogFor(env).fetch(request);
     // Stripe posts without a browser origin, so its webhook stands outside the
     // storefront application's same-origin action guard.
     if (request.method === "POST" && url.pathname === path.webhook) return fulfillStripeCheckoutWebhook(request, env);

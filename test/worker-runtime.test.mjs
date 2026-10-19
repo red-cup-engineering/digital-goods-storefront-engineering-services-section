@@ -336,3 +336,49 @@ test("generic Shop catalog serves browser Bazaar readers while refusing write me
   assert.equal(denied.headers.get("allow"),"GET, HEAD, OPTIONS");
   assert.equal(original.offerings[0].line,"Income:Private");
 });
+
+test("merchant release state and checkout readiness remain separate in agent-facing public catalog", async () => {
+  const seller = {
+    merchant: { name: "Independent Shop", legalBody: "independent", privateKey: "not-public" },
+    offerings: [{ id: "ready-good", title: "Ready Good", line: "Income:Private",
+      status: "live", priceCents: 250, currency: "usd", release: "ready-good" }],
+  };
+  const unreadied = createPublicShopCatalog(seller);
+  const ready = createPublicShopCatalog(seller, { checkoutArmed: true });
+  assert.equal(unreadied.readout.offerings[0].status, "live");
+  assert.equal(unreadied.readout.offerings[0].buyable, false);
+  assert.equal(ready.readout.offerings[0].status, "live");
+  assert.equal(ready.readout.offerings[0].buyable, true);
+  assert.equal(ready.readout.offerings[0].release, "ready-good");
+  assert.equal(JSON.stringify(ready.readout).includes("Income:Private"), false);
+  assert.equal(JSON.stringify(ready.readout).includes("not-public"), false);
+  const unavailable = createPublicShopCatalog({
+    ...seller, offerings: seller.offerings.map((entry) => ({ ...entry, status: "coming-soon" })),
+  }, { checkoutArmed: true });
+  assert.equal(unavailable.readout.offerings[0].status, "coming-soon");
+  assert.equal(unavailable.readout.offerings[0].buyable, false);
+});
+
+test("generic Shop fetch responds to current actual card bindings without changing publication status", async () => {
+  const store = memoryFulfillment();
+  const runtime = createDigitalGoodsStorefrontWorker({
+    catalog, origin: "https://bindinggenerations.net", buyerActor: "urn:ame:test-buyer",
+  });
+  const url = "https://bindinggenerations.net/catalog.json";
+  const usable = await runtime.fetch(new Request(url), env(store));
+  assert.equal(usable.status, 200);
+  assert.equal(usable.headers.get("access-control-allow-origin"), "*");
+  const enabled = await usable.json();
+  assert.equal(enabled.offerings[0].status, "test-only");
+  assert.equal(enabled.offerings[0].buyable, true);
+
+  const disabled = await (await runtime.fetch(new Request(url), env(store, {
+    STRIPE_CUSTOMER_CONTRACT_TOKEN: undefined,
+  }))).json();
+  assert.equal(disabled.offerings[0].status, "test-only");
+  assert.equal(disabled.offerings[0].buyable, false);
+  const restored = await (await runtime.fetch(new Request(url), env(store))).json();
+  assert.equal(restored.offerings[0].buyable, true, "the previous unarmed request cannot poison the shared cache");
+  assert.equal(await (await runtime.fetch(new Request(url, { method: "HEAD" }), env(store))).text(), "");
+  assert.equal((await runtime.fetch(new Request(url, { method: "POST" }), env(store))).status, 405);
+});
