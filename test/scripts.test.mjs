@@ -150,7 +150,7 @@ test("original retailer producer reads a selected catalog and writes byte-pinned
     assert.equal(generated.bookSubmissionDrafts[0].retailerSubmissionDrafts.length, 7);
     assert.deepEqual(JSON.parse(readFileSync(recordPath, "utf8")), generated);
     const guide = readFileSync(guidePath, "utf8");
-    assert.match(guide, /# Book retail listings/u);
+    assert.match(guide, /# Retailer submission drafts/u);
     assert.ok(guide.includes(sourceDigest));
     assert.ok(!readFileSync(recordPath, "utf8").includes(dir), "machine-local temp paths must not escape");
     const kobo = generated.bookSubmissionDrafts[0].retailerSubmissionDrafts.find(x => x.retailerCode === "kobo");
