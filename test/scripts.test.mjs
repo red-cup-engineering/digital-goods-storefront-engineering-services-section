@@ -11,6 +11,8 @@ import { deriveStripeOfferings } from "../scripts/derive-stripe-offerings.mjs";
 import { issueDownloadTokenFromEnv } from "../scripts/issue-download-token.mjs";
 import { verifyDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { deriveRetailListings, retailerSubmissionDraftResource } from "../scripts/derive-retail-listings.mjs";
+import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
+import schema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 
 const CATALOG = {
   merchant: { name: "561 Group", legalBody: "emsenn" },
@@ -102,7 +104,16 @@ test("retailer submission resource replaces opaque output keys with scoped produ
     repository: "causeway-services/shop.561.group", path: "src/compiled-catalog.mjs",
     contentDigest: "ni:///sha-256;" + "a".repeat(43),
   };
-  const result = retailerSubmissionDraftResource(listed, sourceCatalog);
+  const sourceBook = { id: "book-1", book: { edition: { record: "editions/first-acceptance.json",
+    acceptedAt: "2026-09-27T00:00:00Z", digest: "ni:///sha-256;" + "a".repeat(43),
+    files: [{ format: "EPUB", path: "books/a.epub", sha256: "b".repeat(64), bytes: 1024 }] } } };
+  const catalog = { offerings: [sourceBook] };
+  const result = retailerSubmissionDraftResource(listed, sourceCatalog, catalog);
+  assert.equal(validateJsonSchema(result, schema).valid, true);
+  assert.equal(result.bookSubmissionDrafts[0].sourceEditionAcceptanceClaim.acceptanceRecordPath,
+    "editions/first-acceptance.json");
+  assert.equal(result.bookSubmissionDrafts[0].sourceEditionAcceptanceClaim.editionArtifacts[0].sha256Hex,
+    "b".repeat(64));
   assert.equal(result.recordKind, "retailer-submission-draft-collection");
   assert.equal(result.schemaVersion, 2);
   assert.equal(result.disposition, "proposed-not-submitted");
@@ -121,7 +132,7 @@ test("retailer submission resource replaces opaque output keys with scoped produ
     { ...sourceCatalog, repository: "/tmp/machine" },
     { ...sourceCatalog, path: "../../etc/passwd.mjs" },
     { ...sourceCatalog, contentDigest: "unverified" },
-  ]) assert.throws(() => retailerSubmissionDraftResource(listed, rejected), TypeError);
+  ]) assert.throws(() => retailerSubmissionDraftResource(listed, rejected, catalog), TypeError);
 });
 
 test("original retailer producer reads a selected catalog and writes byte-pinned proposals plus human guide", async () => {
@@ -135,6 +146,7 @@ test("original retailer producer reads a selected catalog and writes byte-pinned
         book: { author: "Test Author", publisher: "Test Publisher",
           coverFile: "books/test/cover.png", subjects: [],
           edition: { record: "editions/test-acceptance.json", acceptedAt: "2026-09-27T00:00:00Z",
+            digest: "ni:///sha-256;" + "a".repeat(43),
             files: [{ format: "EPUB", path: "books/test/test.epub", sha256: "b".repeat(64) }] },
         },
       }],
@@ -149,6 +161,10 @@ test("original retailer producer reads a selected catalog and writes byte-pinned
     assert.equal(generated.bookSubmissionDrafts.length, 1);
     assert.equal(generated.bookSubmissionDrafts[0].retailerSubmissionDrafts.length, 7);
     assert.deepEqual(JSON.parse(readFileSync(recordPath, "utf8")), generated);
+    assert.equal(validateJsonSchema(generated, schema).valid, true);
+    const accepted = generated.bookSubmissionDrafts[0].sourceEditionAcceptanceClaim;
+    assert.equal(accepted.editionArtifacts[0].fileFormat, "EPUB");
+    assert.equal(accepted.contentLanguageTag, "en");
     const guide = readFileSync(guidePath, "utf8");
     assert.match(guide, /# Retailer submission drafts/u);
     assert.ok(guide.includes(sourceDigest));
@@ -157,4 +173,30 @@ test("original retailer producer reads a selected catalog and writes byte-pinned
     assert.equal(kobo.disposition, "blocked");
     assert.ok(kobo.submissionBlockers.length > 0);
   });
+});
+
+test("the native JSON Schema refuses forged or ambiguous retailer evidence and false statuses", () => {
+  const sourceCatalog={repository:"causeway-services/shop.561.group",
+    path:"src/compiled-catalog.mjs", contentDigest:"ni:///sha-256;"+"c".repeat(43)};
+  const catalog={offerings:[{id:"test-book",book:{edition:{record:"editions/accepted.json",
+    acceptedAt:"2026-09-27T00:00:00Z",digest:"ni:///sha-256;"+"a".repeat(43),
+    files:[{format:"EPUB",path:"books/accepted.epub",sha256:"b".repeat(64),bytes:1024}]}}}]};
+  const drafts=[{id:"test-book",title:"Test Book",listings:[{channel:"kdp",name:"Amazon KDP",
+    fields:{title:"Test Book",author:"Test",publisher:"Test",language:"English",
+      description:"Description",subjects:[],listPriceUsd:"9.00",files:[],cover:"cover.png"},
+    blocks:[],attention:[]}]}];
+  const valid=retailerSubmissionDraftResource(drafts,sourceCatalog,catalog);
+  const mutations=[
+    d=>{d.bookSubmissionDrafts[0].sourceEditionAcceptanceClaim.editionArtifacts[0].sha256Hex="not-a-digest";},
+    d=>{d.bookSubmissionDrafts[0].retailerSubmissionDrafts[0].proposedSubmissionFields.listPriceUsd="nine";},
+    d=>{d.bookSubmissionDrafts[0].retailerSubmissionDrafts[0].approval=true;},
+    d=>{d.bookSubmissionDrafts[0].retailerSubmissionDrafts[0].disposition="submitted";},
+    d=>{d.bookSubmissionDrafts[0].retailerSubmissionDrafts[0].submissionBlockers=["blocked"];}
+  ];
+  for(const mutate of mutations){const d=structuredClone(valid);mutate(d);
+    assert.equal(validateJsonSchema(d,schema).valid,false);
+  }
+  const missing=structuredClone(catalog); delete missing.offerings[0].book.edition.record;
+  assert.throws(()=>retailerSubmissionDraftResource(drafts,sourceCatalog,missing),/cannot be a candidate/u);
+  assert.throws(()=>retailerSubmissionDraftResource(drafts,sourceCatalog,{offerings:[]}),/does not agree/u);
 });

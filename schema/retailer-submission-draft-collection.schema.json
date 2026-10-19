@@ -1,0 +1,432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/red-cup-engineering/digital-goods-storefront-services-section/blob/main/schema/retailer-submission-draft-collection.schema.json",
+  "title": "Original publisher source-derived retailer submission draft collection",
+  "description": "Writer-owned, strict v2 resource. Not a retailer account record, submitted listing, right, acceptance or ONIX product notification. Files and edition acceptance are source-attributed claims.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recordKind",
+    "schemaVersion",
+    "disposition",
+    "sourceCatalog",
+    "bookSubmissionDrafts"
+  ],
+  "properties": {
+    "recordKind": {
+      "const": "retailer-submission-draft-collection"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "disposition": {
+      "const": "proposed-not-submitted"
+    },
+    "sourceCatalog": {
+      "$ref": "#/$defs/sourceCatalog"
+    },
+    "bookSubmissionDrafts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/bookDraft"
+      }
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\./)[^\\x00]+$"
+    },
+    "sourceCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "path",
+        "contentDigest"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9.-]*$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9/_\\-.]*\\.mjs$"
+        },
+        "contentDigest": {
+          "type": "string",
+          "pattern": "^ni:///sha-256;[A-Za-z0-9_-]{43}$"
+        }
+      }
+    },
+    "acceptanceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acceptanceRecordPath",
+        "acceptedAt",
+        "editionInputDigest",
+        "contentLanguageTag",
+        "editionArtifacts"
+      ],
+      "properties": {
+        "acceptanceRecordPath": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "editionInputDigest": {
+          "type": "string",
+          "pattern": "^ni:///sha-256;[A-Za-z0-9_-]{43}$"
+        },
+        "contentLanguageTag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "editionArtifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileFormat",
+        "relativePath",
+        "sha256Hex",
+        "byteLength"
+      ],
+      "properties": {
+        "fileFormat": {
+          "type": "string",
+          "enum": [
+            "EPUB",
+            "PDF"
+          ]
+        },
+        "relativePath": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "sha256Hex": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "bookDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bookOfferingId",
+        "bookTitle",
+        "sourceEditionAcceptanceClaim",
+        "retailerSubmissionDrafts"
+      ],
+      "properties": {
+        "bookOfferingId": {
+          "$ref": "#/$defs/slug"
+        },
+        "bookTitle": {
+          "$ref": "#/$defs/text"
+        },
+        "sourceEditionAcceptanceClaim": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/acceptanceClaim"
+            }
+          ]
+        },
+        "retailerSubmissionDrafts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/retailerDraft"
+          }
+        }
+      }
+    },
+    "retailerDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retailerCode",
+        "retailerName",
+        "proposedSubmissionFields",
+        "submissionBlockers",
+        "operatorReviewNotes",
+        "disposition"
+      ],
+      "properties": {
+        "retailerCode": {
+          "$ref": "#/$defs/slug"
+        },
+        "retailerName": {
+          "$ref": "#/$defs/text"
+        },
+        "proposedSubmissionFields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "author",
+            "publisher",
+            "language",
+            "description",
+            "subjects",
+            "listPriceUsd",
+            "files",
+            "cover"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "series": {
+              "type": "string"
+            },
+            "subseries": {
+              "type": "string"
+            },
+            "author": {
+              "type": "string"
+            },
+            "publisher": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "listPriceUsd": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+            },
+            "cover": {
+              "type": "string"
+            },
+            "royalty": {
+              "type": "string"
+            },
+            "kdpSelect": {
+              "type": "string"
+            },
+            "territories": {
+              "type": "string"
+            },
+            "drm": {
+              "type": "string"
+            },
+            "categories": {
+              "type": "string"
+            },
+            "aiUsage": {
+              "type": "string"
+            },
+            "bleed": {
+              "type": "string"
+            },
+            "expandedDistribution": {
+              "type": "string"
+            },
+            "finish": {
+              "type": "string"
+            },
+            "identifier": {
+              "type": "string"
+            },
+            "isbn": {
+              "type": "string"
+            },
+            "paper": {
+              "type": "string"
+            },
+            "revenueSplit": {
+              "type": "string"
+            },
+            "minimumPriceUsd": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+            },
+            "suggestedPriceUsd": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+            },
+            "trim": {
+              "type": "string"
+            },
+            "subjects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "keywords": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "contributors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "aiDisclosure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "text",
+                "images",
+                "translations"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "string"
+                },
+                "translations": {
+                  "type": "string"
+                }
+              }
+            },
+            "aiCategories": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "manuscript",
+                "cover",
+                "images",
+                "translations"
+              ],
+              "properties": {
+                "manuscript": {
+                  "type": "string",
+                  "enum": [
+                    "AI-Created",
+                    "AI-Assisted",
+                    "None"
+                  ]
+                },
+                "cover": {
+                  "type": "string",
+                  "enum": [
+                    "AI-Created",
+                    "AI-Assisted",
+                    "None"
+                  ]
+                },
+                "images": {
+                  "type": "string",
+                  "enum": [
+                    "AI-Created",
+                    "AI-Assisted",
+                    "None"
+                  ]
+                },
+                "translations": {
+                  "type": "string",
+                  "enum": [
+                    "AI-Created",
+                    "AI-Assisted",
+                    "None"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "submissionBlockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "operatorReviewNotes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "disposition": {
+          "enum": [
+            "blocked",
+            "candidate-needs-publisher-review"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "blocked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "submissionBlockers": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "candidate-needs-publisher-review"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "submissionBlockers": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

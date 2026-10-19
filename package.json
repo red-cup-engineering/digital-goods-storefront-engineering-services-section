@@ -17,7 +17,8 @@
     "./storefront-presentation": "./src/storefront-presentation.mjs",
     "./retail-listings": "./src/retail-listings.mjs",
     "./review-copy": "./src/review-copy.mjs",
-    "./retail-submission-drafts": "./scripts/derive-retail-listings.mjs"
+    "./retail-submission-drafts": "./scripts/derive-retail-listings.mjs",
+    "./retail-submission-schema": "./schema/retailer-submission-draft-collection.schema.json"
   },
   "bin": {
     "digital-goods-storefront-cli": "apps/storefront-cli.mjs"
@@ -25,7 +26,8 @@
   "files": [
     "src",
     "scripts",
-    "apps"
+    "apps",
+    "schema"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -35,7 +37,8 @@
     "@red-cup-engineering/javascript-node-services-section": "0.3.2",
     "@red-cup-engineering/stripe-services-section": "0.1.11",
     "@red-cup-engineering/computer-web-server": "0.6.2",
-    "@red-cup-engineering/web-page-tiling-engine": "0.14.2"
+    "@red-cup-engineering/web-page-tiling-engine": "0.14.2",
+    "@red-cup-engineering/json-schema-services-section": "0.5.0"
   },
   "engines": {
     "node": ">=22.18"

@@ -5,6 +5,9 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { retailListings } from "../src/retail-listings.mjs";
+import { bookLanguageTag } from "../src/digital-goods-storefront.mjs";
+import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
+import sourceSchema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 
 const LABELS = Object.freeze({
   title: "Title", subtitle: "Subtitle", series: "Series", subseries: "Subseries", author: "Author", publisher: "Publisher", language: "Language",
@@ -51,7 +54,7 @@ export function renderRetailListings(listings, { source }) {
  * exported resource unambiguously a set of human submission drafts, not
  * completed retailer listings. The only source is the actually compiled
  * Shop catalog; contentDigest pins its exact bytes, not their authority. */
-export function retailerSubmissionDraftResource(listings, sourceCatalog) {
+export function retailerSubmissionDraftResource(listings, sourceCatalog, catalog) {
   const validSource = sourceCatalog && typeof sourceCatalog === "object"
     && /^[a-z0-9][a-z0-9.-]*\/[a-z0-9][a-z0-9.-]*$/u.test(sourceCatalog.repository ?? "")
     && typeof sourceCatalog.path === "string"
@@ -59,8 +62,30 @@ export function retailerSubmissionDraftResource(listings, sourceCatalog) {
     && !sourceCatalog.path.split("/").includes("..")
     && /^ni:\/\/\/sha-256;[a-zA-Z0-9_-]{43}$/u.test(sourceCatalog.contentDigest ?? "");
   if (!validSource) throw new TypeError("retailer submissions need a repository, package-relative module path and exact SHA-256 source digest");
-  if (!Array.isArray(listings)) throw new TypeError("retailer submission drafts require original native listing data");
-  return Object.freeze({
+  if (!Array.isArray(listings) || !catalog || !Array.isArray(catalog.offerings))
+    throw new TypeError("retailer submission drafts require the same original source catalog as their listing projection");
+  const bookOfferings = catalog.offerings.filter(offering => offering.book);
+  const byId = new Map(bookOfferings.map(offering => [offering.id, offering]));
+  if (byId.size !== bookOfferings.length || byId.size !== listings.length
+    || listings.some(book => !byId.has(book.id)))
+    throw new TypeError("the retailer projection does not agree with the source catalog's book identities");
+  const acceptanceClaim = offering => {
+    const edition = offering.book.edition;
+    if (!edition?.record || !edition?.acceptedAt) return null;
+    return {
+      acceptanceRecordPath: edition.record,
+      acceptedAt: edition.acceptedAt,
+      editionInputDigest: edition.digest,
+      contentLanguageTag: bookLanguageTag(offering.book),
+      editionArtifacts: (edition.files ?? []).map(file => ({
+        fileFormat: file.format,
+        relativePath: file.path,
+        sha256Hex: file.sha256,
+        byteLength: file.bytes,
+      })),
+    };
+  };
+  const result = {
     recordKind: "retailer-submission-draft-collection",
     schemaVersion: 2,
     disposition: "proposed-not-submitted",
@@ -68,6 +93,7 @@ export function retailerSubmissionDraftResource(listings, sourceCatalog) {
     bookSubmissionDrafts: listings.map(({ id, title, listings: channels }) => ({
       bookOfferingId: id,
       bookTitle: title,
+      sourceEditionAcceptanceClaim: acceptanceClaim(byId.get(id)),
       retailerSubmissionDrafts: channels.map(({ channel, name, fields, blocks, attention }) => ({
         retailerCode: channel,
         retailerName: name,
@@ -77,7 +103,17 @@ export function retailerSubmissionDraftResource(listings, sourceCatalog) {
         disposition: blocks.length ? "blocked" : "candidate-needs-publisher-review",
       })),
     })),
-  });
+  };
+  for (const book of result.bookSubmissionDrafts) {
+    if (book.sourceEditionAcceptanceClaim === null
+      && book.retailerSubmissionDrafts.some(draft => draft.disposition !== "blocked"))
+      throw new TypeError("a retailer submission cannot be a candidate without its source edition acceptance");
+  }
+  const validation = validateJsonSchema(result, sourceSchema);
+  if (!validation.valid)
+    throw new TypeError("invalid retailer submission resource: "
+      + validation.issues.map(issue => `${issue.path || "/"}: ${issue.message}`).join("; "));
+  return Object.freeze(result);
 }
 
 /** Derive the current Shop source's original retailer forms, then write
@@ -92,7 +128,7 @@ export async function deriveRetailListings(catalogModule, recordPath, guidePath,
   const sourceCatalog = { repository, path, contentDigest };
   const catalog = (await import(pathToFileURL(originalModule).href)).default;
   const listings = retailListings(catalog);
-  const resource = retailerSubmissionDraftResource(listings, sourceCatalog);
+  const resource = retailerSubmissionDraftResource(listings, sourceCatalog, catalog);
   const sourceLabel = "\x60" + repository + "/" + path + "\x60 (exact source bytes: \x60" + contentDigest + "\x60)";
   // These two files are derived readouts; publishing to any retailer is a
   // separate authenticated, authorized, provider-specific effect.
