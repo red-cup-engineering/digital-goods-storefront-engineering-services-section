@@ -383,3 +383,28 @@ test("generic Shop fetch responds to current actual card bindings without changi
   assert.equal(await (await runtime.fetch(new Request(url, { method: "HEAD" }), env(store))).text(), "");
   assert.equal((await runtime.fetch(new Request(url, { method: "POST" }), env(store))).status, 405);
 });
+
+
+test('mountable Shop exposes the shared MCP without creating another merchant catalog', async () => {
+  const store = memoryFulfillment();
+  const runtime = createDigitalGoodsStorefrontWorker({
+    catalog, origin: 'https://bindinggenerations.net', buyerActor: 'urn:ame:test-buyer',
+    routes: { goods: '/publications/' },
+  });
+  const shopUrl = 'https://bindinggenerations.net';
+  const publicData = await (await runtime.fetch(new Request(shopUrl + '/catalog.json'), env(store))).json();
+  const message = { jsonrpc: '2.0', id: 1, method: 'tools/call',
+    params: { name: 'get_product', arguments: { id: 'test-book' } } };
+  const call = await runtime.fetch(new Request(shopUrl + '/mcp', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(message),
+  }), env(store));
+  assert.equal(call.status, 200);
+  const product = (await call.json()).result.structuredContent;
+  assert.equal(product.id, publicData.offerings[0].id);
+  assert.equal(product.buyable, publicData.offerings[0].buyable);
+  assert.equal(product.url, shopUrl + '/publications/test-book');
+  assert.equal(product.goods[0].sha256, publicData.offerings[0].goods[0].sha256);
+  assert.equal(Object.hasOwn(product.goods[0], 'key'), false);
+  assert.equal((await runtime.fetch(new Request(shopUrl + '/mcp'), env(store))).status, 405);
+});
