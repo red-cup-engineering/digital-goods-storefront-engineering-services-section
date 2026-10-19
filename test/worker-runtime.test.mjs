@@ -343,6 +343,7 @@ test("merchant release state and checkout readiness remain separate in agent-fac
     offerings: [{ id: "ready-good", title: "Ready Good", line: "Income:Private",
       status: "live", priceCents: 250, currency: "usd", release: "ready-good" }],
   };
+  assert.throws(() => createPublicShopCatalog(seller, { checkoutArmed: "yes" }), TypeError);
   const unreadied = createPublicShopCatalog(seller);
   const ready = createPublicShopCatalog(seller, { checkoutArmed: true });
   assert.equal(unreadied.readout.offerings[0].status, "live");

@@ -14,6 +14,7 @@ import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } 
  * Only source-qualified merchant product fields are exposed; payment, wallet
  * and internal storage authority remain on the original merchant runtime. */
 export function createPublicShopCatalog(catalog, { checkoutArmed = false } = {}) {
+  if (typeof checkoutArmed !== "boolean") throw new TypeError("checkoutArmed must be Boolean");
   // Source release state and the currently armed purchasing action are
   // different. Reuse the human storefront's existing purchase affordance,
   // retaining the original privacy-filtered merchant and product contracts.
@@ -109,7 +110,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
   const railCatalog = stripeCatalog(catalog);
   const offering = (id) => catalog.offerings.find((candidate) => candidate.id === id);
   const title = storefront.title ?? catalog.merchant?.name ?? "Storefront";
-  const armed = (env) => { const state = readiness({ env, catalog: railCatalog }); return supportsStore(env.fulfillment) && env.goods && typeof env.goods.get === "function" && env.audit && typeof env.audit.record === "function" && typeof env.tokenSecret === "string" && env.tokenSecret.length > 0 && state.credential.present && state.webhookSecretPresent && state.customerContractTokenPresent; };
+  const armed = (env) => { const state = readiness({ env, catalog: railCatalog }); return Boolean(supportsStore(env.fulfillment) && env.goods && typeof env.goods.get === "function" && env.audit && typeof env.audit.record === "function" && typeof env.tokenSecret === "string" && env.tokenSecret.length > 0 && state.credential.present && state.webhookSecretPresent && state.customerContractTokenPresent); };
   // Cache immutable bytes for the two capability states, never a Response.
   // The deployment's current Stripe/fulfillment bindings choose the state
   // at request time: a source-live book is not necessarily purchase-ready.
