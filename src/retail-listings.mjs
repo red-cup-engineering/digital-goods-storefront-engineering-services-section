@@ -116,6 +116,10 @@ export function retailListingFor(offering, channel) {
   if (!book) throw new TypeError(`${offering.id} is not a book`);
   const marks = book.marks ?? [];
   const price = offering.priceCents;
+  // These provider-specific drafts currently quote USD. Refuse a different
+  // currency or malformed amount instead of silently representing it as USD.
+  if (!Number.isSafeInteger(price) || price < 0 || String(offering.currency).toUpperCase() !== "USD")
+    throw new TypeError("retailer forms require a source-qualified USD price in integer cents");
   const studyGuide = book.profile === "study-guide";
   const blocks = [];
   const attention = [];
