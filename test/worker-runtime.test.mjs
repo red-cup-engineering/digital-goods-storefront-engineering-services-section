@@ -307,10 +307,10 @@ test("a separate tenant serves public machine-readable Shop goods without privat
     origin:"https://tenant.example",buyerActor:"urn:ame:tenant"});
   const result = await runtime.fetch(new Request("https://tenant.example/catalog.json"),{});
   assert.equal(result.status,200);
-  assert.match(result.headers.get("content-type"),/application\\/json/u);
+  assert.match(result.headers.get("content-type"),/application\/json/u);
   assert.equal(result.headers.get("cache-control"),"public, max-age=60");
   const body = await result.json();
-    assert.equal(result.headers.get("access-control-allow-origin"),"*");
+  assert.equal(result.headers.get("access-control-allow-origin"),"*");
   assert.equal(body.merchant.name,"Tenant");
   assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
   assert.ok(!/bankToken|Income:Private|internal\/|"key"/u.test(JSON.stringify(body)));
