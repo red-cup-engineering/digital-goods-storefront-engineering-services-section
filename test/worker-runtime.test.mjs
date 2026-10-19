@@ -313,7 +313,7 @@ test("a separate tenant serves public machine-readable Shop goods without privat
     assert.equal(result.headers.get("access-control-allow-origin"),"*");
   assert.equal(body.merchant.name,"Tenant");
   assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
-  assert.ok(!/bankToken|Income:Private|internal\\/|"key"/u.test(JSON.stringify(body)));
+  assert.ok(!/bankToken|Income:Private|internal\/|"key"/u.test(JSON.stringify(body)));
 });
 
 test("human Shop and public agent catalog share sellable-first selection with honest checkout readiness", async () => {
