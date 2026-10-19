@@ -96,7 +96,7 @@ test("retailer submission resource replaces opaque output keys with scoped produ
   const listed = [{
     id: "book-1", title: "A Book",
     listings: [{
-      channel: "kdp", name: "Amazon Kindle", fields: { title: "A Book", listPriceUsd: "9.00" },
+      channel: "kdp", name: "Amazon Kindle", fields: { title: "A Book", author: "Test Author", publisher: "Test Publisher", language: "English", description: "A source-qualified book.", subjects: [], listPriceUsd: "9.00", files: [], cover: "books/a-cover.png" },
       blocks: [], attention: ["Publisher must independently submit the book."],
     }],
   }];
