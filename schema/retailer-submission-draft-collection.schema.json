@@ -216,10 +216,16 @@
               "type": "string"
             },
             "author": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "publisher": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "language": {
               "type": "string"
