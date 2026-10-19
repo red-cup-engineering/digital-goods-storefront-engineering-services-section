@@ -1,3 +1,4 @@
+import { publicCatalog } from "../src/digital-goods-storefront.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -305,4 +306,24 @@ test("structured Book data carries the book's actual language rather than claimi
   assert.equal(structured["@type"],"Book");
   assert.equal(structured.inLanguage,"es-MX");
   assert.equal(structuredDataFor(liveOffering({book:{}}),{origin:"https://shop.example",href:"/goods/english"}).inLanguage,"en");
+});
+
+test("public Shop catalog is merchant-owned but hides storage, accounting and manuscript records", () => {
+  const original = {merchant:{name:"Tenant",legalBody:"LLC",privateBank:"secret"},
+    internalRoot:"private/",offerings:[{
+      id:"product",title:"Product",line:"Income:Private",priceCents:100,currency:"usd",status:"live",release:"product",
+      goods:[{name:"EPUB",key:"storage/key",byteLength:10,contentType:"application/epub+zip",sha256:"a".repeat(64)}],
+      book:{author:"Real Author",manuscript:"internal/manuscript",coverFile:"internal/cover",
+        edition:{record:"internal/acceptance",digest:"ni:///sha-256;"+"X".repeat(43),
+          files:[{format:"EPUB",bytes:10,sha256:"a".repeat(64),path:"storage/key"}]},
+        printEdition:{record:"internal/print",interior:{path:"internal/print.pdf",sha256:"b".repeat(64),bytes:4},
+          cover:{path:"internal/cover.pdf",sha256:"c".repeat(64),bytes:5}}},
+    }]};
+  const buyer = publicCatalog(original);
+  assert.equal(buyer.merchant.name,"Tenant");
+  assert.equal(buyer.offerings[0].book.author,"Real Author");
+  assert.equal(buyer.offerings[0].book.edition.files[0].sha256,"a".repeat(64));
+  assert.equal(buyer.offerings[0].book.printEdition.cover.sha256,"c".repeat(64));
+  assert.ok(!/Income:Private|privateBank|internalRoot|internal\\/|storage\\/|manuscript|coverFile|"record"|"key"/u.test(JSON.stringify(buyer)));
+  assert.equal(original.offerings[0].goods[0].key,"storage/key");
 });

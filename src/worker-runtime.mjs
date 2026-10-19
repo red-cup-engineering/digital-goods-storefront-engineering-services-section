@@ -3,7 +3,7 @@ import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, re
 import { tuftePage, tufteRedirect } from "@red-cup-engineering/web-page-tiling-engine/application";
 import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/storefront";
 import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
-import { catalogModel, issueDownloadToken, stripeOfferingFor, validateCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
+import { catalogModel, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
@@ -65,8 +65,7 @@ function admitted(result) {
  * @returns {{fetch: (request: Request, env: object) => Promise<Response>, catalog: object}}
  */
 export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor, routes = {}, tokenTtlSeconds = 3600, storefront = {} }) {
-  const validation = validateCatalog(catalog);
-  if (!validation.valid) throw new TypeError(`invalid catalog: ${validation.errors.map((error) => error.message).join("; ")}`);
+  const buyerCatalog = publicCatalog(catalog);
   if (!validOrigin(origin)) throw new TypeError("origin must be a canonical https origin");
   if (typeof buyerActor !== "string" || buyerActor.length === 0) throw new TypeError("buyerActor is required");
   const path = { catalog: "/", goods: "/goods/", checkout: "/checkout/", webhook: "/webhooks/stripe", thanks: "/thanks", download: "/download/", library: "/library", gifts: "/gifts", giftApi: "/api/gifts", reviewCopies: "/review-copies", reviewCopyApi: "/api/review-copies", signIn: "/oauth/login", callback: "/oauth/callback", signOut: "/oauth/logout", ...routes };
@@ -432,7 +431,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       { match: path.signIn, load: beginSignIn },
       { match: path.callback, load: finishSignIn },
       { match: path.signOut, load: signOut },
-      { match: "/catalog.json", load: () => json(catalog) },
+      { match: "/catalog.json", load: () => json(buyerCatalog) },
     ],
     actions: [
       { match: `${path.checkout}:id`, run: checkout },

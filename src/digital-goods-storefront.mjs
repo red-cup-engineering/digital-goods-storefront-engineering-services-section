@@ -145,6 +145,42 @@ export function validateCatalog(catalog) {
   return { valid: errors.length === 0, errors };
 }
 
+/** Source-qualified public product information for any independent Shop.
+ * Keep settlement lines, storage pointers and manuscript paths at the merchant.
+ * Explicit field selection prevents new private tenant attributes leaking. */
+export function publicCatalog(catalog) {
+  const validity = validateCatalog(catalog);
+  if (!validity.valid) throw new TypeError(`invalid catalog: ${validity.errors.map(e => e.message).join("; ")}`);
+  const pick = (record, keys) => Object.fromEntries(keys
+    .filter(key => Object.hasOwn(record, key)).map(key => [key, record[key]]));
+  const file = source => pick(source, ["format", "bytes", "sha256", "contentType", "byteLength"]);
+  const offerings = catalog.offerings.map(source => {
+    const offering = pick(source, ["id","title","subtitle","blurb","keywords","cover",
+      "status","priceCents","currency","release","agentOfferUrl","externalUrl"]);
+    if (source.goods) offering.goods = source.goods.map(good => pick(good,
+      ["name","contentType","byteLength","sha256"]));
+    if (source.book) {
+      const book = pick(source.book, ["author","authorship","publisher","subjects",
+        "marks","contents","series","profile","textProvenance","coverIllustration",
+        "coverArt","generatedIllustrations","print","language"]);
+      if (source.book.edition) {
+        const e = source.book.edition;
+        book.edition = {...pick(e, ["digest","acceptedAt","pages","proof"]),
+          files: (e.files ?? []).map(file)};
+      }
+      if (source.book.printEdition) {
+        const p = source.book.printEdition;
+        book.printEdition = {...pick(p, ["profile","pages","acceptedAt"]),
+          ...(p.interior ? {interior: file(p.interior)} : {}),
+          ...(p.cover ? {cover: file(p.cover)} : {})};
+      }
+      offering.book = book;
+    }
+    return offering;
+  });
+  return {merchant: pick(catalog.merchant, ["name","legalBody","website"]), offerings};
+}
+
 function hostnameOf(url) {
   try {
     return new URL(url).hostname;

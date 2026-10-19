@@ -294,3 +294,21 @@ test("a signed-out library asks for sign-in, and a purchase kept from its receip
   const stolen = await shop().fetch(new Request("https://shop.test/library/keep", as("thief@example.test", { method: "POST", body: new URLSearchParams({ session_id: "cs_kept" }) })), readerEnv(store));
   assert.equal(stolen.status, 409);
 });
+
+test("a separate tenant serves public machine-readable Shop goods without private accounts", async () => {
+  const privateCatalog = {merchant:{name:"Tenant",legalBody:"LLC",bankToken:"secret"},offerings:[{
+    id:"product",title:"Product",line:"Income:Private",status:"live",priceCents:100,currency:"usd",
+    release:"product",goods:[{name:"File",key:"internal/file",byteLength:4,
+      contentType:"application/octet-stream",sha256:"b".repeat(64)}],
+  }]};
+  const runtime = createDigitalGoodsStorefrontWorker({catalog:privateCatalog,
+    origin:"https://tenant.example",buyerActor:"urn:ame:tenant"});
+  const result = await runtime.fetch(new Request("https://tenant.example/catalog.json"),{});
+  assert.equal(result.status,200);
+  assert.match(result.headers.get("content-type"),/application\\/json/u);
+  assert.equal(result.headers.get("cache-control"),"no-store");
+  const body = await result.json();
+  assert.equal(body.merchant.name,"Tenant");
+  assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
+  assert.ok(!/bankToken|Income:Private|internal\\/|"key"/u.test(JSON.stringify(body)));
+});
