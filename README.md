@@ -7,6 +7,19 @@ the card rail is `@red-cup-engineering/stripe-services-section`, pinned
 exactly — and derives Stripe's fixed-offerings shape from this package's
 own catalog, so the catalog is the one source of truth.
 
+## Source language in search and retailer listings
+
+An offering's optional `book.language` is a BCP 47 language tag describing
+the **book's actual content**, not the language of the storefront interface.
+Set it only from accepted publisher metadata; for example, `es-MX` or
+`zh-Hant-TW`. The original `bookLanguageTag` operation uses JavaScript
+`Intl.getCanonicalLocales`, and catalog validation refuses malformed tags.
+Existing source records without a declared language retain the pre-existing
+English default. Schema.org `Book.inLanguage` and each retailer's English
+language-name field consume that same book source. The conversion does not
+translate the book, establish an external retailer listing, enable card
+checkout, or qualify for Google's distinct Book Actions data-feed program.
+
 ## What lives here
 
 - `src/digital-goods-storefront.mjs` — pure domain semantics, Web Crypto
