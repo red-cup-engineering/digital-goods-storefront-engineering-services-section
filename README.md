@@ -20,6 +20,39 @@ language-name field consume that same book source. The conversion does not
 translate the book, establish an external retailer listing, enable card
 checkout, or qualify for Google's distinct Book Actions data-feed program.
 
+## Retailer submission drafts: one selected source contract
+
+The original package exports `./retail-submission-drafts` (the
+`scripts/derive-retail-listings.mjs` writer) and
+`./retail-submission-schema` (the **single** canonical
+`schema/retailer-submission-draft-collection.schema.json`, JSON Schema
+Draft 2020-12). The package's `files` selection includes this `schema/`
+directory. A historical second `data/schemas/` schema was neither selected by
+the writer nor packaged for Kindle; it also disagreed about nullable publisher
+and author fields and lacked the explicit edition-acceptance claim. Its source
+history is retained in Git, **not** as a competing v2 admission rule.
+
+The original Causeway Shop compiled book source is read and hashed under
+`sourceCatalog`; the Red Cup writer produces `bookSubmissionDrafts` whose
+`sourceEditionAcceptanceClaim` is either typed acceptance-source coordinates
+or explicit `null`. `proposedSubmissionFields.author` and
+`proposedSubmissionFields.publisher` may also be `null` when the original
+catalog provides no such authority; the canonical retailer projection must
+then emit blockers, never silently substitute the seller's name. The original
+Kindle Publishing `selectRetailerSubmissionCandidate` consumes the **exported
+canonical schema**, and separately checks the selected compiled source digest,
+blockers, and its own channel support. The human retailer guide is another
+projection of the same writer, not a second record of accepted publication.
+
+This is local typed JSON with content-addressed `ni:///sha-256` references
+and BCP 47 language identities. Shop's public books use schema.org Book/Offer;
+Kindle's independent interchange surfaces are ONIX/OPDS where applicable.
+A retailer **form proposal** must not be mislabeled an ONIX notice, a legal
+rights declaration, a performed submission, or a public-sale receipt.
+Source/package/CI qualification, installed Shop derivation, selected Kindle
+readback, human publisher review, remote submission and customer receipt
+remain separate conditions of receiving.
+
 ## What lives here
 
 - `src/digital-goods-storefront.mjs` — pure domain semantics, Web Crypto
