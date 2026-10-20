@@ -11,6 +11,7 @@ import { deriveStripeOfferings } from "../scripts/derive-stripe-offerings.mjs";
 import { issueDownloadTokenFromEnv } from "../scripts/issue-download-token.mjs";
 import { verifyDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { deriveRetailListings, retailerSubmissionDraftResource } from "../scripts/derive-retail-listings.mjs";
+import { retailListings } from "../src/retail-listings.mjs";
 import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
 import schema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 
@@ -133,6 +134,38 @@ test("retailer submission resource replaces opaque output keys with scoped produ
     { ...sourceCatalog, path: "../../etc/passwd.mjs" },
     { ...sourceCatalog, contentDigest: "unverified" },
   ]) assert.throws(() => retailerSubmissionDraftResource(listed, rejected, catalog), TypeError);
+});
+
+test("canonical packaged schema preserves missing byline and separate edition-acceptance claims", () => {
+  const catalog = {
+    merchant: { name: "561 Group" },
+    offerings: [{
+      id: "book-without-byline", title: "Book Without Byline",
+      status: "coming-soon", priceCents: 900, currency: "usd",
+      blurb: "An unaccepted source book.", keywords: [],
+      book: { coverFile: "books/unaccepted/cover.png", subjects: [], edition: { files: [] } },
+    }],
+  };
+  const sourceCatalog = {
+    repository: "causeway-services/shop.561.group",
+    path: "src/compiled-catalog.mjs",
+    contentDigest: "ni:///sha-256;" + "a".repeat(43),
+  };
+  const generated = retailerSubmissionDraftResource(retailListings(catalog), sourceCatalog, catalog);
+  const book = generated.bookSubmissionDrafts[0];
+  assert.equal(validateJsonSchema(generated, schema).valid, true);
+  assert.equal(book.sourceEditionAcceptanceClaim, null, "historical files are not independent edition acceptance");
+  for (const candidate of book.retailerSubmissionDrafts) {
+    assert.equal(candidate.disposition, "blocked");
+    assert.equal(candidate.proposedSubmissionFields.author, null);
+    assert.equal(candidate.proposedSubmissionFields.publisher, null);
+    assert.match(candidate.submissionBlockers.join(" "), /No source-defined author/u);
+    assert.match(candidate.submissionBlockers.join(" "), /No source-defined publisher/u);
+  }
+  const forged = structuredClone(generated);
+  delete forged.bookSubmissionDrafts[0].sourceEditionAcceptanceClaim;
+  assert.equal(validateJsonSchema(forged, schema).valid, false,
+    "the original shipped v2 contract requires an explicit absent-or-present acceptance claim");
 });
 
 test("original retailer producer reads a selected catalog and writes byte-pinned proposals plus human guide", async () => {
