@@ -22,7 +22,7 @@ test("KDP refuses a title naming another's mark, keeps companions to the US, dro
   assert.deepEqual(kdp.fields.keywords, ["data analytics", "SQL"]);
   assert.equal(kdp.fields.royalty, "70%");
   assert.match(kdp.fields.kdpSelect, /^No/);
-  const other = retailListingFor(companion, "kobo");
+  const other = retailListingFor(companion, "google-play-books");
   assert.equal(other.blocks.length, 0);
   assert.match(other.attention[0], /independence statement/);
 });
