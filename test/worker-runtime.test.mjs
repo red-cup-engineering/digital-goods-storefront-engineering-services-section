@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import test from "node:test";
 
-import { createDigitalGoodsStorefrontWorker, createPublicShopCatalog } from "../src/worker-runtime.mjs";
+import { createDigitalGoodsStorefrontWorker, createPublicShopCatalog, SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "../src/worker-runtime.mjs";
 import { issueDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { createDurableFulfillment, DigitalGoodsFulfillment } from "../src/durable-fulfillment.mjs";
 import { referencedReviewCopyId, reviewCopyPointerKey } from "../src/review-copy.mjs";
@@ -451,4 +451,8 @@ test('mountable Shop exposes the shared MCP without creating another merchant ca
   assert.equal(product.goods[0].sha256, publicData.offerings[0].goods[0].sha256);
   assert.equal(Object.hasOwn(product.goods[0], 'key'), false);
   assert.equal((await runtime.fetch(new Request(shopUrl + '/mcp'), env(store))).status, 405);
+});
+
+test("original native storefront runtime advertises signed outside-catalog audit explicitly",()=>{
+ assert.equal(SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT,true);
 });
