@@ -25,7 +25,9 @@
   "files": [
     "src",
     "scripts",
-    "apps"
+    "apps",
+    "test/stripe-checkout-fulfillment.test.mjs",
+    "test/durable-fulfillment.test.mjs"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -46,5 +48,9 @@
   "funding": {
     "type": "individual",
     "url": "https://github.com/561-group/.github/blob/main/TIPS.md"
-  }
+  },
+  "receivingTests": [
+    "test/stripe-checkout-fulfillment.test.mjs",
+    "test/durable-fulfillment.test.mjs"
+  ]
 }
