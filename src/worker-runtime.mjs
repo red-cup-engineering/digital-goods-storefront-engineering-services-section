@@ -6,6 +6,7 @@ import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engi
 import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
+export { SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
 import { REVIEW_COPY_ID, admitReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
 import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
