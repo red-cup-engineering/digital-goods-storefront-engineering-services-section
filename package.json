@@ -27,7 +27,8 @@
     "scripts",
     "apps",
     "test/stripe-checkout-fulfillment.test.mjs",
-    "test/durable-fulfillment.test.mjs"
+    "test/durable-fulfillment.test.mjs",
+    "test/worker-runtime.test.mjs"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -51,6 +52,7 @@
   },
   "receivingTests": [
     "test/stripe-checkout-fulfillment.test.mjs",
-    "test/durable-fulfillment.test.mjs"
+    "test/durable-fulfillment.test.mjs",
+    "test/worker-runtime.test.mjs"
   ]
 }
