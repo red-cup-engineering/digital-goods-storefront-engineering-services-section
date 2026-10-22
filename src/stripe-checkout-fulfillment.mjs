@@ -45,8 +45,9 @@ async function receiveExternalCheckout(event,projection,env){
   signatureVerified:true,buyerPersonalDataRecorded:false,rawBodyRecorded:false,
   consequence:'outside-catalog-checkout-observed-not-group-treasury-settlement'
  };
+ let persisted;
  try{
-  await env.audit.record({
+  persisted=await env.audit.record({
    category:'stripe-webhook-event-admission.events',
    recordedAt:new Date().toISOString(),
    record,told:{for:true,against:false}
@@ -54,7 +55,8 @@ async function receiveExternalCheckout(event,projection,env){
  }catch{
   return json({error:'external-checkout-audit-unavailable'},503);
  }
- return json({accepted:true,externalCheckoutObserved:true,settlement:'not-established'});
+ return json({accepted:true,externalCheckoutObserved:true,
+  duplicate:persisted?.duplicate===true,settlement:'not-established'});
 }
 
 function json(value, status = 200) { return Response.json(value, { status, headers: { "cache-control": "no-store" } }); }
