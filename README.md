@@ -180,6 +180,16 @@ work, profitable sale, backend admission or deployed effect is claimed.
 Source integration and live buyer receiving remain explicit subsequent
 obligations owned by competent Engineering, Operations and Public offices.
 
+## Authenticated external Stripe Payment Link events, without false merchandise sales
+
+The original `src/stripe-checkout-fulfillment.mjs#fulfillStripeCheckoutWebhook` owns the actual Shop webhook receiver. Not every `checkout.session.completed` is a book-store Checkout: Stripe-hosted Payment Links make sessions without a prior `recordCheckout` in the Shop's Durable Object. Previously those signed provider observations reached `claimPayment`, failed its real book-offering/request-digest requirement, and received HTTP 409. Do **not** weaken this requirement to issue an undeserved book entitlement.
+
+This source's narrow `externalPaymentLinks` receiving option admits only bounded, unique Stripe Payment Link **IDs explicitly selected by the Shop operator**. An event must first pass the original raw-body Stripe HMAC verifier and its body-size bound. A matching Checkout receives a redacted, versioned `StripeExternalPaymentLinkObservation` in the **existing** `env.audit.record` Durable Object sink; the record contains the actual provider event/session/link IDs, observed gross amount/currency/payment status and source time, never customer email, raw event, private metadata, copyrighted content, book-rights or a claim of net/settled 561 Group cash. Unknown links, malformed source identities and absent durable audit refuse without creating checkout registrations or goods. The original book Checkout path remains unchanged.
+
+The original `DigitalGoodsFulfillment` `/audit` now receives immutable same-ID economic facts transactionally: retries of the same source event report `duplicate:true` and keep the first stored receipt; an incompatible same-ID record refuses with 409 instead of replacing signed financial history. The returned `SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT` export is surfaced by the actual `./worker-runtime` package entry, so Shop can distinguish installed support from a source-only Git branch. This is an observation, not a subscription, paid invoice, refund, royalty, payout or treasury settlement.
+
+The existing native `test/stripe-checkout-fulfillment.test.mjs` and `test/durable-fulfillment.test.mjs` own positive and adverse signed-wire/durable-receiving checks and are listed as mandatory `receivingTests` in the original npm carrier. **The manifest remains at version 0.4.4**; a real versioned immutable registry release and dependent Shop installation must be separately observed. The existing live Stripe webhook is configured only for `checkout.session.completed`, so invoices and recurring renewals require their own authorized event-scope and receipt service; no source edit silently changes that provider setting.
+
 ## Five-custody thread
 
 - **Science**: none — this is applied checkout/delivery engineering, not

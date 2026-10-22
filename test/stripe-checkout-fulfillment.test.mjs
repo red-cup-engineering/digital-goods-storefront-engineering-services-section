@@ -201,3 +201,98 @@ test("malformed UTF-8 is not silently normalized into a valid signed Stripe even
   assert.deepEqual(await response.json(), { error: "invalid-json" });
   assert.equal(await f.fulfillment.getEntitlement(checkout.sessionId), null);
 });
+
+
+
+const externalLinkId='plink_1USMywJ1vYnPQu2NWHtcqx0b';
+const externalCheckout=(overrides={})=>({
+ id:'evt_external_support_1',type:'checkout.session.completed',livemode:true,
+ created:1792670000,data:{object:{
+  id:'cs_external_support_1',payment_link:externalLinkId,
+  status:'complete',payment_status:'paid',amount_total:1000,currency:'usd',
+  payment_intent:'pi_external_support_1',
+  customer_details:{email:'buyer-private@example.invalid'},
+  metadata:{private_note:'never-persist'},
+  ...overrides
+ }}
+});
+function externalEnvironment(f){
+ return {...f.env,externalPaymentLinks:[externalLinkId],audit:f.fulfillment.audit};
+}
+
+test('signed outside-catalog Stripe Payment Link is observed durably without any book entitlement or Group cash claim',async()=>{
+ const f=await fixture(),env=externalEnvironment(f),event=externalCheckout();
+ const received=await fulfillStripeCheckoutWebhook(request(event),env);
+ assert.equal(received.status,200);
+ assert.deepEqual(await received.json(),{
+  accepted:true,externalCheckoutObserved:true,duplicate:false,settlement:'not-established'
+ });
+ const rows=[...f.rows.entries()];
+ const audited=rows.find(([name])=>name==='audit:urn:stripe-event-receipt:evt_external_support_1')?.[1];
+ assert.equal(audited?.record?.type,'StripeExternalPaymentLinkObservation');
+ assert.equal(audited.record.schemaVersion,1);
+ assert.equal(audited.record.stripePaymentLinkId,externalLinkId);
+ assert.equal(audited.record.stripeCheckoutSessionId,'cs_external_support_1');
+ assert.equal(audited.record.amountTotal,1000);
+ assert.equal(audited.record.currency,'usd');
+ assert.equal(audited.record.livemode,true);
+ assert.equal(audited.record.signatureVerified,true);
+ assert.equal(audited.record.buyerPersonalDataRecorded,false);
+ assert.equal(audited.record.consequence,'outside-catalog-checkout-observed-not-group-treasury-settlement');
+ assert.equal(JSON.stringify(audited).includes('buyer-private@example.invalid'),false);
+ assert.equal(JSON.stringify(audited).includes('private_note'),false);
+ assert.equal(JSON.stringify(audited).includes('pi_external_support_1'),false);
+ assert.equal(f.rows.has('event:evt_external_support_1'),false);
+ assert.equal(f.rows.has('checkout:cs_external_support_1'),false);
+ assert.equal(f.rows.has('entitlement:cs_external_support_1'),false);
+ assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
+});
+
+test('repeated exact signed external checkout keeps original immutable receipt and reports idempotence',async()=>{
+ const f=await fixture(),env=externalEnvironment(f),event=externalCheckout();
+ const first=await fulfillStripeCheckoutWebhook(request(event),env);
+ assert.equal(first.status,200);
+ const key='audit:urn:stripe-event-receipt:evt_external_support_1';
+ const original=structuredClone(f.rows.get(key));
+ const next=await fulfillStripeCheckoutWebhook(request(event),env);
+ assert.deepEqual(await next.json(),{
+  accepted:true,externalCheckoutObserved:true,duplicate:true,settlement:'not-established'
+ });
+ assert.deepEqual(f.rows.get(key),original);
+ assert.equal([...f.rows.keys()].filter(x=>x===key).length,1);
+ const contradictory=externalCheckout({amount_total:500});
+ const mismatch=await fulfillStripeCheckoutWebhook(request(contradictory),env);
+ assert.equal(mismatch.status,503,'conflicting provider data may not overwrite the first authenticated event');
+ assert.deepEqual(f.rows.get(key),original);
+});
+
+test('external Stripe link observation is opt-in and invalid source/payment data never claims a customer',async()=>{
+ const f=await fixture(),event=externalCheckout();
+ const cases=[
+  [event,{...f.env,audit:f.fulfillment.audit},409],
+  [event,{...f.env,externalPaymentLinks:['not-a-link'],audit:f.fulfillment.audit},503],
+  [event,{...f.env,externalPaymentLinks:[externalLinkId]},503],
+  [externalCheckout({payment_link:'plink_DIFFERENT'}),externalEnvironment(f),409],
+  [externalCheckout({payment_link:externalLinkId,amount_total:-1}),externalEnvironment(f),409],
+  [externalCheckout({payment_link:externalLinkId,currency:'bad-usd'}),externalEnvironment(f),409],
+  [externalCheckout({payment_link:externalLinkId,status:'open'}),externalEnvironment(f),409],
+  [externalCheckout({payment_link:externalLinkId,payment_status:'unrecognized'}),externalEnvironment(f),409]
+ ];
+ for(const [source,env,status] of cases){
+  const received=await fulfillStripeCheckoutWebhook(request(source),env);
+  assert.equal(received.status,status,JSON.stringify(source.data.object));
+ }
+ const forged=await fulfillStripeCheckoutWebhook(request(event,'wrong-secret'),externalEnvironment(f));
+ assert.equal(forged.status,400);
+ assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
+ assert.equal(f.rows.has('entitlement:cs_external_support_1'),false);
+});
+
+test('external checkout storage refusal requests Stripe retry, not a pretend payment or delivered book',async()=>{
+ const f=await fixture(),env=externalEnvironment(f);
+ const failing={...env,audit:{record:async()=>{throw Error('persistent receiver unavailable')}}};
+ const attempted=await fulfillStripeCheckoutWebhook(request(externalCheckout()),failing);
+ assert.equal(attempted.status,503);
+ assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
+ assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
+});

@@ -89,3 +89,47 @@ test("a pending Stripe completion is retained without delivering goods; a separa
   assert.deepEqual(await late.json(), { disposition: "pending" });
   assert.equal(rows.get("entitlement:cs_test")?.status, "active");
 });
+
+
+
+test('Stripe external event audit is append-only, distinguishes retries from conflicting money observations',async()=>{
+ const {runtime,rows}=object();
+ const id='urn:stripe-event-receipt:evt_source_observed_1';
+ const first={
+  category:'stripe-webhook-event-admission.events',
+  recordedAt:'2026-10-22T12:00:00.000Z',
+  record:{id,type:'StripeExternalPaymentLinkObservation',stripePaymentLinkId:'plink_verified',amountTotal:1000},
+  told:{for:true,against:false}
+ };
+ const written=await call(runtime,'/audit',first);
+ assert.deepEqual(await written.json(),{ok:true,duplicate:false});
+ const key='audit:'+id,original=structuredClone(rows.get(key));
+ assert.deepEqual(await (await call(runtime,'/audit',{...first,recordedAt:'2026-10-22T13:00:00.000Z'})).json(),
+  {ok:true,duplicate:true});
+ assert.deepEqual(rows.get(key),original,'retries cannot update original economic receipt timestamps');
+ const conflict=await call(runtime,'/audit',{
+  ...first,record:{...first.record,amountTotal:3000}
+ });
+ assert.equal(conflict.status,409);
+ assert.deepEqual(await conflict.json(),{error:'receipt-identity-conflict'});
+ assert.deepEqual(rows.get(key),original,'a changed same-ID payment observation cannot overwrite the first signed witness');
+ const otherId=await call(runtime,'/audit',{
+  ...first,record:{...first.record,id:'urn:stripe-event-receipt:evt_source_observed_2'}
+ });
+ assert.equal(otherId.status,200);
+ assert.equal(rows.size,2);
+});
+
+test('Shop durable audit client provides receipt duplicate readback and refuses conflict',async()=>{
+ const {runtime}=object(),store=createDurableFulfillment(namespace(runtime),'test');
+ const first={category:'stripe-webhook-event-admission.events',
+  record:{id:'urn:stripe-event-receipt:evt_stable_1',amountTotal:1000},
+  recordedAt:'2026-10-22T12:00:00.000Z'
+ };
+ const original=await store.audit.record(first);
+ assert.equal(original.duplicate,false);
+ const repeated=await store.audit.record({...first,recordedAt:'2026-10-22T13:00:00.000Z'});
+ assert.equal(repeated.duplicate,true);
+ await assert.rejects(store.audit.record({...first,record:{...first.record,amountTotal:500}}),
+  /could not record checkout receipt/u);
+});
