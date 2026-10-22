@@ -95,12 +95,23 @@ export class DigitalGoodsFulfillment {
       await transaction.put(`entitlement:${id}`, { ...existing, status: "revoked", revokedAt: body.revokedAt ?? null, revocationReason: body.reason ?? "withdrawn" });
       return reply({ disposition: "revoked" });
     });
-    if (request.method === "POST" && url.pathname === "/audit") {
+    if (request.method === "POST" && url.pathname === "/audit") return this.ctx.storage.transaction(async (transaction) => {
       const id = body?.record?.id;
       if (typeof id !== "string" || !id) return reply({ error: "receipt-id-required" }, 400);
-      await this.ctx.storage.put(`audit:${id}`, body);
-      return reply({ ok: true });
-    }
+      const key=`audit:${id}`,existing=await transaction.get(key);
+      if(existing){
+        // An original signed event keeps one economic observation. Retries
+        // may change local recording time, but never rewrite its provider
+        // facts, category, or attributed truth.
+        if(existing.category!==body.category||
+          JSON.stringify(existing.record)!==JSON.stringify(body.record)||
+          JSON.stringify(existing.told??null)!==JSON.stringify(body.told??null))
+          return reply({error:'receipt-identity-conflict'},409);
+        return reply({ok:true,duplicate:true});
+      }
+      await transaction.put(key,body);
+      return reply({ok:true,duplicate:false});
+    });
     return reply({ error: "not-found" }, 404);
   }
 }
@@ -129,7 +140,7 @@ export function createDurableFulfillment(namespace, name) {
     async bindEntitlement(value) { return call("/bind", value); },
     async listAccount(email) { return (await get("account", email)) ?? []; },
     async listGrants(email) { return (await get("grants", email)) ?? []; },
-    audit: { async record(entry) { const result = await call("/audit", entry); if (result.failed) throw new Error("could not record checkout receipt"); return entry; } },
+    audit: { async record(entry) { const result = await call("/audit", entry); if (result.failed||result.ok!==true) throw new Error("could not record checkout receipt"); return {...entry,duplicate:result.duplicate===true}; } },
   };
 }
 
