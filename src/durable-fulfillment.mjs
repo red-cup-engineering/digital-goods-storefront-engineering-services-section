@@ -9,6 +9,25 @@ function sameCheckout(left, right) {
     && (left.account ?? null) === (right.account ?? null)
     && (left.status ?? null) === (right.status ?? null);
 }
+// Persist only the immutable, non-PII event facts consumed by Checkout
+// receiving. A Stripe event ID cannot be reinterpreted as another amount,
+// currency, payment intent or state during a retry.
+function paymentClaimFacts(body, eventType) {
+  return {
+    sessionId: body.sessionId, type: eventType,
+    offeringId: body.offeringId, requestDigest: body.requestDigest,
+    amountTotal: body.amountTotal, currency: body.currency,
+    stripeMode: body.stripeMode, paymentStatus: body.paymentStatus,
+    status: body.status, paymentIntentId: body.paymentIntentId ?? null,
+    createdAt: body.createdAt ?? null,
+  };
+}
+function matchesPaymentCheckout(checkout, body) {
+  return !!checkout && body.status === "complete"
+    && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest
+    && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency
+    && checkout.stripeMode === body.stripeMode;
+}
 const EMAIL = /^[^\s@]+@[^\s@]+$/u;
 const GIFT_ID = /^gift-[0-9a-f-]{36}$/u;
 /** The one spelling of an account: its verified email, lowercased. */
@@ -50,28 +69,47 @@ export class DigitalGoodsFulfillment {
     if (request.method === "POST" && url.pathname === "/claim") return this.ctx.storage.transaction(async (transaction) => {
       const eventType = body.eventType ?? "checkout.session.completed";
       if (!CHECKOUT_EVENTS.includes(eventType)) return reply({ disposition: "rejected" }, 409);
+      const claimFacts = paymentClaimFacts(body, eventType);
       const priorEvent = await transaction.get(`event:${body.eventId}`);
       if (priorEvent) {
-        // One original provider event names one Checkout session and event
-        // type. An existing payment event may not be silently treated as the
-        // duplicate of a different customer's payment. Older stored rows
-        // already retain both fields; no migration or new storage authority.
         if (priorEvent.sessionId !== body.sessionId || priorEvent.type !== eventType)
           return reply({ disposition: "rejected" }, 409);
+        if (priorEvent.claimFacts !== undefined) {
+          // Complete receipts written by this revision are compared against
+          // their ORIGINAL facts, not mutable Checkout or entitlement state.
+          if (JSON.stringify(priorEvent.claimFacts) !== JSON.stringify(claimFacts))
+            return reply({ disposition: "rejected" }, 409);
+        } else {
+          // Older persisted rows contain only session/type/pending. Do not
+          // invent a full original payload: bound legacy retries to the
+          // immutable Checkout and any already retained payment intent.
+          // Legacy createdAt and other unknown facts remain unverified.
+          const originalCheckout = await transaction.get(`checkout:${body.sessionId}`);
+          if (!matchesPaymentCheckout(originalCheckout, body))
+            return reply({ disposition: "rejected" }, 409);
+          const pending = eventType === "checkout.session.completed" && body.paymentStatus === "unpaid";
+          if ((priorEvent.pending === true) !== pending || (!pending && body.paymentStatus !== "paid"))
+            return reply({ disposition: "rejected" }, 409);
+          if (!pending) {
+            const entitlement = await transaction.get(`entitlement:${body.sessionId}`);
+            if (entitlement?.paymentIntentId != null && entitlement.paymentIntentId !== claimFacts.paymentIntentId)
+              return reply({ disposition: "rejected" }, 409);
+          }
+        }
         return reply({ disposition: "duplicate" });
       }
       const checkout = await transaction.get(`checkout:${body.sessionId}`);
-      const matched = checkout && body.status === "complete" && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency && checkout.stripeMode === body.stripeMode;
+      const matched = matchesPaymentCheckout(checkout, body);
       if (!matched) return reply({ disposition: "rejected" }, 409);
       // Stripe may complete Checkout before an asynchronous method is paid.
       // Retain that original event without manufacturing an entitlement or
       // requiring Stripe to retry a legitimate, still-unpaid completion.
       if (eventType === "checkout.session.completed" && body.paymentStatus === "unpaid") {
-        await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, pending: true });
+        await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, pending: true, claimFacts });
         return reply({ disposition: "pending" });
       }
       if (body.paymentStatus !== "paid") return reply({ disposition: "rejected" }, 409);
-      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType });
+      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, claimFacts });
       const entitlementKey = `entitlement:${body.sessionId}`; const existing = await transaction.get(entitlementKey);
       if (existing) return reply({ disposition: "duplicate-session" });
       const account = accountOf(checkout.account);
