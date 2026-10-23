@@ -503,3 +503,56 @@ test("a signed replay with only its original Stripe event creation time remains 
   assert.equal(refused.status, 409);
   assert.deepEqual(await refused.json(), { error: "payment-does-not-match-checkout-intent" });
 });
+
+
+/** Signed, separately identified Stripe events must not replace a
+ * Checkout's previously received payment intent. These exercise the original
+ * HMAC request, provider projector, Worker receiver, Durable Object and
+ * retained entitlement together; no substitute payment rail or fake event id.
+ */
+for (const [label, firstType, nextType, revoke, nextIntent] of [
+  ["delayed success then completed with a second intent",
+    "checkout.session.async_payment_succeeded", "checkout.session.completed", false, "pi_other"],
+  ["completed then delayed success with a second intent",
+    "checkout.session.completed", "checkout.session.async_payment_succeeded", false, "pi_different"],
+  ["revoked purchase then changed payment intent",
+    "checkout.session.async_payment_succeeded", "checkout.session.completed", true, "pi_other_after_refund"],
+  ["delayed success then null payment intent",
+    "checkout.session.async_payment_succeeded", "checkout.session.completed", false, null],
+]) test("signed distinct event identity must refuse " + label, async () => {
+  const f = await fixture();
+  const initial = await fulfillStripeCheckoutWebhook(request(event(firstType)), f.env);
+  assert.equal(initial.status, 200);
+  if (revoke) {
+    const withdrawn = await f.fulfillment.revokeEntitlement({
+      sessionId: checkout.sessionId, paymentIntentId: "pi_fixture", reason: "refund",
+    });
+    assert.equal(withdrawn.disposition, "revoked");
+  }
+  const beforeEntitlement = structuredClone(await f.fulfillment.getEntitlement(checkout.sessionId));
+  const beforeKeys = [...f.rows.keys()];
+  const conflicting = {
+    ...event(nextType, { payment_intent: nextIntent }),
+    id: "evt_second_payment_intent",
+  };
+  const result = await fulfillStripeCheckoutWebhook(request(conflicting), f.env);
+  assert.equal(result.status, 409);
+  assert.deepEqual(await result.json(), { error: "payment-does-not-match-checkout-intent" });
+  assert.deepEqual(await f.fulfillment.getEntitlement(checkout.sessionId), beforeEntitlement);
+  assert.deepEqual([...f.rows.keys()], beforeKeys);
+  assert.equal(f.rows.has("event:evt_second_payment_intent"), false);
+  const originalRetry = await fulfillStripeCheckoutWebhook(request(event(firstType)), f.env);
+  assert.deepEqual(await originalRetry.json(), { accepted: true, duplicate: true });
+});
+
+test("signed different event ID with original settled intent remains idempotent", async () => {
+  const f = await fixture();
+  assert.equal((await fulfillStripeCheckoutWebhook(request(event()), f.env)).status, 200);
+  const original = structuredClone(await f.fulfillment.getEntitlement(checkout.sessionId));
+  const second = { ...event("checkout.session.completed"), id: "evt_second_same_payment_intent" };
+  const accepted = await fulfillStripeCheckoutWebhook(request(second), f.env);
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(await accepted.json(), { accepted: true, duplicate: true });
+  assert.equal(f.rows.get("event:evt_second_same_payment_intent")?.claimFacts?.paymentIntentId, "pi_fixture");
+  assert.deepEqual(await f.fulfillment.getEntitlement(checkout.sessionId), original);
+});
