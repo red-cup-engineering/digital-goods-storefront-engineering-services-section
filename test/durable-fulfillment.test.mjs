@@ -133,3 +133,67 @@ test('Shop durable audit client provides receipt duplicate readback and refuses 
  await assert.rejects(store.audit.record({...first,record:{...first.record,amountTotal:500}}),
   /could not record checkout receipt/u);
 });
+
+
+
+/** Independent durable-ACK oracle. HTTP 200 and ok:true are insufficient:
+ * the original Worker must know whether an event was newly stored or replayed.
+ * A malformed durable reply must not become duplicate:false by coercion. */
+const malformedAuditDuplicateAcks=[
+  ["missing",{}],
+  ["null",{duplicate:null}],
+  ["empty string",{duplicate:""}],
+  ["string true",{duplicate:"true"}],
+  ["string false",{duplicate:"false"}],
+  ["string zero",{duplicate:"0"}],
+  ["string one",{duplicate:"1"}],
+  ["string yes",{duplicate:"yes"}],
+  ["string no",{duplicate:"no"}],
+  ["string new",{duplicate:"new"}],
+  ["string duplicate",{duplicate:"duplicate"}],
+  ["number zero",{duplicate:0}],
+  ["number one",{duplicate:1}],
+  ["number negative",{duplicate:-1}],
+  ["number two",{duplicate:2}],
+  ["fraction",{duplicate:0.5}],
+  ["array empty",{duplicate:[]}],
+  ["array true",{duplicate:[true]}],
+  ["array false",{duplicate:[false]}],
+  ["object empty",{duplicate:{}}],
+  ["object value",{duplicate:{value:true}}],
+  ["object duplicate true",{duplicate:{duplicate:true}}],
+  ["object duplicate false",{duplicate:{duplicate:false}}],
+  ["string fraction",{duplicate:"0.0"}],
+  ["object status",{duplicate:{flag:"old"}}]
+];
+const auditedStripeEvent={category:"stripe-webhook-event-admission.events",
+ record:{id:"urn:stripe-event-receipt:evt_durable_ack_1",type:"StripeExternalPaymentLinkObservation",
+   stripePaymentLinkId:"plink_verified",amountTotal:1000,currency:"usd"},
+ told:{for:true,against:false}
+};
+for(const [name, fields] of malformedAuditDuplicateAcks)
+  test("a successful durable HTTP reply must not coerce an invalid duplicate ACK: "+name,async()=>{
+    let calls=0;
+    const namespace={idFromName(){return "offline";},get(){return {async fetch(url,init){
+      calls++;
+      assert.equal(new URL(url).pathname,"/audit");
+      assert.deepEqual(JSON.parse(init.body),auditedStripeEvent);
+      return Response.json({ok:true,...fields});
+    }};}};
+    const client=createDurableFulfillment(namespace,"offline");
+    await assert.rejects(client.audit.record(auditedStripeEvent),/could not record checkout receipt/u);
+    assert.equal(calls,1);
+  });
+for(const duplicate of [false,true])
+  test("the original durable audit preserves an explicit Boolean duplicate disposition: "+duplicate,async()=>{
+    let calls=0;
+    const namespace={idFromName(){return "offline";},get(){return {async fetch(url,init){
+      calls++;
+      assert.equal(new URL(url).pathname,"/audit");
+      assert.deepEqual(JSON.parse(init.body),auditedStripeEvent);
+      return Response.json({ok:true,duplicate});
+    }};}};
+    const client=createDurableFulfillment(namespace,"offline");
+    assert.deepEqual(await client.audit.record(auditedStripeEvent),{...auditedStripeEvent,duplicate});
+    assert.equal(calls,1);
+  });
