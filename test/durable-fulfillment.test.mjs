@@ -395,3 +395,85 @@ for (const [name, changed, pending, expectedStatus] of [
   assert.deepEqual(await response.json(), { disposition: expectedStatus === 200 ? "duplicate" : "rejected" });
   assert.deepEqual(rows.get("event:evt_immutable_facts"), originalRow, "legacy rows are not silently migrated");
 });
+
+
+/** A new Stripe event ID for an existing Checkout must not conceal a
+ * different payment intent. The prior claim and its original entitlement are
+ * the held independent oracle: same session+price is NOT sufficient. Vary the
+ * original event type, later event type and revoked/active state as well as
+ * the incompatible intent; check that no new event is durably acknowledged.
+ */
+const otherSettledIntentValues = [
+  "pi_changed", "pi_changed2", "pi_replayed", "pi_another",
+  "pi_secondary", "pi_777", "pi_wrong_source", null, undefined,
+];
+const secondarySettledEventContexts = [
+  ["completed to completed", "checkout.session.completed", "checkout.session.completed", false],
+  ["completed to delayed success after revocation", "checkout.session.completed", "checkout.session.async_payment_succeeded", true],
+  ["delayed success to completed", "checkout.session.async_payment_succeeded", "checkout.session.completed", false],
+];
+for (const [context, firstType, nextType, revoked] of secondarySettledEventContexts)
+  for (const [index, changedIntent] of otherSettledIntentValues.entries())
+    test("distinct signed event cannot replace original payment intent: " + context + " #" + index, async () => {
+      const { runtime, rows } = object();
+      await call(runtime, "/checkout", checkout);
+      const first = { ...payment, eventId: "evt_first_settled", eventType: firstType };
+      const accepted = await call(runtime, "/claim", first);
+      assert.deepEqual(await accepted.json(), { disposition: "claimed" });
+      if (revoked) {
+        const revokedResponse = await call(runtime, "/revoke",
+          { sessionId: checkout.sessionId, paymentIntentId: "pi_test", reason: "refund" });
+        assert.equal(revokedResponse.status, 200);
+      }
+      const originalEntitlement = structuredClone(rows.get("entitlement:" + checkout.sessionId));
+      const originalEvent = structuredClone(rows.get("event:evt_first_settled"));
+      const originalKeys = [...rows.keys()];
+      const otherId = "evt_secondary_intent_" + index + (revoked ? "_revoked" : "_" + firstType.split(".").at(-1));
+      const response = await call(runtime, "/claim", {
+        ...first, eventId: otherId, eventType: nextType, paymentIntentId: changedIntent,
+      });
+      assert.equal(response.status, 409, "same session but different payment intent must refuse");
+      assert.deepEqual(await response.json(), { disposition: "rejected" });
+      assert.deepEqual(rows.get("entitlement:" + checkout.sessionId), originalEntitlement);
+      assert.deepEqual(rows.get("event:evt_first_settled"), originalEvent);
+      assert.deepEqual([...rows.keys()], originalKeys, "the refused event must not be persisted");
+      assert.equal(rows.has("event:" + otherId), false);
+    });
+
+for (const [context, firstType, nextType, revoked] of secondarySettledEventContexts)
+  test("same settled intent permits a distinct event without another entitlement: " + context, async () => {
+    const { runtime, rows } = object();
+    await call(runtime, "/checkout", checkout);
+    assert.deepEqual(await (await call(runtime, "/claim", {
+      ...payment, eventId: "evt_first_settled", eventType: firstType,
+    })).json(), { disposition: "claimed" });
+    if (revoked) await call(runtime, "/revoke",
+      { sessionId: checkout.sessionId, paymentIntentId: "pi_test", reason: "refund" });
+    const originalEntitlement = structuredClone(rows.get("entitlement:" + checkout.sessionId));
+    const response = await call(runtime, "/claim", {
+      ...payment, eventId: "evt_same_intent_second", eventType: nextType,
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { disposition: "duplicate-session" });
+    assert.deepEqual(rows.get("entitlement:" + checkout.sessionId), originalEntitlement);
+    assert.equal(rows.get("event:evt_same_intent_second")?.claimFacts?.paymentIntentId, "pi_test");
+  });
+
+test("legacy purchased record with no payment intent only receives equally absent intent", async () => {
+  const { runtime, rows } = object();
+  await call(runtime, "/checkout", checkout);
+  rows.set("entitlement:cs_test", {
+    id: "cs_test", kind: "purchase", status: "active", paymentIntentId: null,
+  });
+  const inconsistent = await call(runtime, "/claim", {
+    ...payment, eventId: "evt_legacy_nonnull",
+  });
+  assert.equal(inconsistent.status, 409);
+  assert.equal(rows.has("event:evt_legacy_nonnull"), false);
+  const equivalent = await call(runtime, "/claim", {
+    ...payment, eventId: "evt_legacy_null", paymentIntentId: null,
+  });
+  assert.equal(equivalent.status, 200);
+  assert.deepEqual(await equivalent.json(), { disposition: "duplicate-session" });
+  assert.equal(rows.get("entitlement:cs_test").paymentIntentId, null);
+});
