@@ -463,3 +463,43 @@ for(const duplicate of [false,true])
   assert.equal(posted,1);
   assert.equal(await f.fulfillment.getEntitlement("cs_external_support_1"),null);
  });
+
+
+/** The raw event signature is recomputed for every adverse provider
+ * observation. A valid signature does not permit one retained Stripe event ID
+ * to change monetary facts or Checkout identity on a replay.
+ */
+const signedEventReinterpretations = [
+  ["changed amount", { amount_total: 1201 }],
+  ["changed currency", { currency: "eur" }],
+  ["changed payment intent", { payment_intent: "pi_other" }],
+  ["changed payment status", { payment_status: "unpaid" }],
+  ["changed Checkout status", { status: "open" }],
+  ["changed offering", { metadata: { offering_id: "other-book", request_digest: checkout.requestDigest } }],
+  ["changed request digest", { metadata: { offering_id: checkout.offeringId, request_digest: "other-digest" } }],
+];
+for (const [label, changed] of signedEventReinterpretations)
+  test("freshly signed replay refuses same event ID with " + label, async () => {
+    const f = await fixture();
+    const first = await fulfillStripeCheckoutWebhook(request(event()), f.env);
+    assert.equal(first.status, 200);
+    const savedEvent = structuredClone(f.rows.get("event:evt_async"));
+    const savedPurchase = structuredClone(await f.fulfillment.getEntitlement(checkout.sessionId));
+    const duplicate = await fulfillStripeCheckoutWebhook(request(event(undefined, changed)), f.env);
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual(await duplicate.json(), { error: "payment-does-not-match-checkout-intent" });
+    assert.deepEqual(f.rows.get("event:evt_async"), savedEvent);
+    assert.deepEqual(await f.fulfillment.getEntitlement(checkout.sessionId), savedPurchase);
+    const goodReplay = await fulfillStripeCheckoutWebhook(request(event()), f.env);
+    assert.deepEqual(await goodReplay.json(), { accepted: true, duplicate: true });
+  });
+test("a signed replay with only its original Stripe event creation time remains idempotent", async () => {
+  const f = await fixture();
+  const actual = { ...event(), created: 1700000000 };
+  assert.equal((await fulfillStripeCheckoutWebhook(request(actual), f.env)).status, 200);
+  assert.deepEqual(await (await fulfillStripeCheckoutWebhook(request(actual), f.env)).json(), { accepted: true, duplicate: true });
+  const changed = { ...actual, created: 1700000001 };
+  const refused = await fulfillStripeCheckoutWebhook(request(changed), f.env);
+  assert.equal(refused.status, 409);
+  assert.deepEqual(await refused.json(), { error: "payment-does-not-match-checkout-intent" });
+});
