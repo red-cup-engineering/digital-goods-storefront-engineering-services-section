@@ -356,3 +356,30 @@ for(const duplicate of [false,true])
   assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
   assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
  });
+
+/** Held-out negative controls: an audit adapter can mutate the receipt object
+ * passed into it. The acceptance oracle must precede that mutable boundary. */
+const mutatingExternalAuditAcks=[
+ ['amount',entry=>{entry.record.amountTotal=0;}],
+ ['receipt id',entry=>{entry.record.id='urn:stripe-event-receipt:evt_other';}],
+ ['payment link',entry=>{entry.record.stripePaymentLinkId='plink_other';}],
+ ['currency',entry=>{entry.record.currency='eur';}],
+ ['checkout id',entry=>{entry.record.stripeCheckoutSessionId='cs_other';}],
+ ['payment status',entry=>{entry.record.paymentStatus='unpaid';}],
+ ['live/test mode',entry=>{entry.record.livemode=false;}],
+ ['PII flag',entry=>{entry.record.buyerPersonalDataRecorded=true;}],
+ ['truth statement',entry=>{entry.told.against=true;}],
+ ['receipt category',entry=>{entry.category='unrelated';}]
+];
+for(const [name,mutate]of mutatingExternalAuditAcks)
+ test('external audit ACK cannot conceal adapter mutation: '+name,async()=>{
+  const f=await fixture();
+  const env={...externalEnvironment(f),audit:{
+   record:async entry=>{mutate(entry);return {...entry,duplicate:false};}
+  }};
+  const response=await fulfillStripeCheckoutWebhook(request(externalCheckout()),env);
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:'external-checkout-audit-unavailable'});
+  assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
+  assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
+ });
