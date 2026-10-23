@@ -140,7 +140,7 @@ export function createDurableFulfillment(namespace, name) {
     async bindEntitlement(value) { return call("/bind", value); },
     async listAccount(email) { return (await get("account", email)) ?? []; },
     async listGrants(email) { return (await get("grants", email)) ?? []; },
-    audit: { async record(entry) { const result = await call("/audit", entry); if (result.failed||result.ok!==true) throw new Error("could not record checkout receipt"); return {...entry,duplicate:result.duplicate===true}; } },
+    audit: { async record(entry) { const result = await call("/audit", entry); if (result.failed||result.ok!==true||typeof result.duplicate!=="boolean") throw new Error("could not record checkout receipt"); return {...entry,duplicate:result.duplicate}; } },
   };
 }
 
