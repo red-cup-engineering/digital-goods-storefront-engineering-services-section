@@ -383,3 +383,57 @@ for(const [name,mutate]of mutatingExternalAuditAcks)
   assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
   assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
  });
+
+
+
+/** Cross-owner receiving regression: the signed Stripe handler must see the
+ * original durable client's fail-closed ACK semantics, not merely a fabricated
+ * application-level mock adapter. These are offline synthetic DO responses. */
+for(const [name,ack] of [
+ ["duplicate absent",{ok:true}],
+ ["duplicate encoded as string",{ok:true,duplicate:"false"}],
+ ["duplicate encoded as number",{ok:true,duplicate:0}]
+]) test("source-owned durable client must refuse a malformed successful HTTP admission reply: "+name,async()=>{
+  const f=await fixture();
+  let posted=0;
+  const client=createDurableFulfillment({
+    idFromName(){return "audit-fixture";},
+    get(){return {async fetch(url,init){
+      posted++;
+      assert.equal(new URL(url).pathname,"/audit");
+      const entry=JSON.parse(init.body);
+      assert.equal(entry.record.stripeEventId,"evt_external_support_1");
+      assert.equal(entry.record.stripePaymentLinkId,externalLinkId);
+      assert.equal(JSON.stringify(entry).includes("buyer-private@example.invalid"),false);
+      return Response.json(ack);
+    }};}
+  },"audit-fixture");
+  const response=await fulfillStripeCheckoutWebhook(request(externalCheckout()),
+    {...externalEnvironment(f),audit:client.audit});
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:"external-checkout-audit-unavailable"});
+  assert.equal(posted,1);
+  assert.equal(await f.fulfillment.getEntitlement("cs_external_support_1"),null);
+});
+for(const duplicate of [false,true])
+ test("signed external support event accepts an explicit durable Boolean reply: "+duplicate,async()=>{
+  const f=await fixture();
+  let posted=0;
+  const client=createDurableFulfillment({
+    idFromName(){return "audit-fixture";},
+    get(){return {async fetch(url,init){
+      posted++;
+      assert.equal(new URL(url).pathname,"/audit");
+      assert.equal(JSON.parse(init.body).record.stripeEventId,"evt_external_support_1");
+      return Response.json({ok:true,duplicate});
+    }};}
+  },"audit-fixture");
+  const response=await fulfillStripeCheckoutWebhook(request(externalCheckout()),
+    {...externalEnvironment(f),audit:client.audit});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{
+    accepted:true,externalCheckoutObserved:true,duplicate,settlement:"not-established"
+  });
+  assert.equal(posted,1);
+  assert.equal(await f.fulfillment.getEntitlement("cs_external_support_1"),null);
+ });
