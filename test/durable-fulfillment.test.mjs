@@ -298,3 +298,100 @@ for(const duplicate of [false,true])
     assert.deepEqual(await client.audit.record(auditedStripeEvent),{...auditedStripeEvent,duplicate});
     assert.equal(calls,1);
   });
+
+
+/** Provider event IDs bind the complete immutable economic claim, not merely
+ * their Checkout session and event type. This exercises the ORIGINAL Durable
+ * Object transaction and retained storage, not a copied comparison helper.
+ * The mutations are fixed independently of implementation property names.
+ */
+const originalPaidClaim = {
+  ...payment, eventId: "evt_immutable_facts", eventType: "checkout.session.completed",
+  paymentIntentId: "pi_test", createdAt: 1700000000,
+};
+const immutableClaimChanges = {
+  amountTotal: [0, 1, 1201, 9999, -1, "1200", null],
+  currency: ["eur", "gbp", "USD", "", null, 77],
+  offeringId: ["other", "book-v2", "", null],
+  requestDigest: ["different", "changed", "", null],
+  stripeMode: ["live", "bad", "", null],
+  paymentStatus: ["unpaid", "no_payment_required", "failed", null],
+  status: ["open", "expired", "pending", null],
+  paymentIntentId: ["pi_other", "pi_second", "", null],
+  createdAt: [0, 1700000001, "time", null],
+};
+for (const [field, changes] of Object.entries(immutableClaimChanges))
+  for (const [index, changed] of changes.entries())
+    test("existing signed event ID refuses modified " + field + " #" + index, async () => {
+      const { runtime, rows } = object();
+      await call(runtime, "/checkout", checkout);
+      assert.deepEqual(await (await call(runtime, "/claim", originalPaidClaim)).json(), { disposition: "claimed" });
+      const beforeEvent = structuredClone(rows.get("event:evt_immutable_facts"));
+      const beforeEntitlement = structuredClone(rows.get("entitlement:cs_test"));
+      const beforeCount = rows.size;
+      const received = await call(runtime, "/claim", { ...originalPaidClaim, [field]: changed });
+      assert.equal(received.status, 409);
+      assert.deepEqual(await received.json(), { disposition: "rejected" });
+      assert.deepEqual(rows.get("event:evt_immutable_facts"), beforeEvent, "original event facts are retained");
+      assert.deepEqual(rows.get("entitlement:cs_test"), beforeEntitlement, "previous purchase remains unchanged");
+      assert.equal(rows.size, beforeCount, "no unexpected fulfillment or audit keys");
+    });
+
+test("original payment claim can be retried without another entitlement or stored buyer data", async () => {
+  const { runtime, rows } = object();
+  await call(runtime, "/checkout", checkout);
+  assert.deepEqual(await (await call(runtime, "/claim", originalPaidClaim)).json(), { disposition: "claimed" });
+  const original = structuredClone(rows.get("event:evt_immutable_facts"));
+  assert.deepEqual(Object.keys(original.claimFacts), [
+    "sessionId", "type", "offeringId", "requestDigest", "amountTotal",
+    "currency", "stripeMode", "paymentStatus", "status", "paymentIntentId", "createdAt",
+  ]);
+  assert.equal(JSON.stringify(original).includes("example.test"), false, "no buyer email in event evidence");
+  assert.deepEqual(await (await call(runtime, "/claim", { ...originalPaidClaim })).json(), { disposition: "duplicate" });
+  assert.deepEqual(rows.get("event:evt_immutable_facts"), original);
+  assert.deepEqual([...rows.keys()].filter(key => key.startsWith("entitlement:")), ["entitlement:cs_test"]);
+});
+test("original unpaid completion can retry, but a changed same-ID fact cannot create an entitlement", async () => {
+  const { runtime, rows } = object();
+  await call(runtime, "/checkout", checkout);
+  const original = { ...originalPaidClaim, paymentStatus: "unpaid" };
+  assert.deepEqual(await (await call(runtime, "/claim", original)).json(), { disposition: "pending" });
+  assert.deepEqual(await (await call(runtime, "/claim", original)).json(), { disposition: "duplicate" });
+  const saved = structuredClone(rows.get("event:evt_immutable_facts"));
+  for (const changed of [{ amountTotal: 1 }, { currency: "eur" }, { paymentStatus: "paid" }, { paymentIntentId: "pi_other" }, { createdAt: 1700000001 }]) {
+    const response = await call(runtime, "/claim", { ...original, ...changed });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { disposition: "rejected" });
+  }
+  assert.deepEqual(rows.get("event:evt_immutable_facts"), saved);
+  assert.equal(rows.has("entitlement:cs_test"), false);
+});
+
+/** Previously installed Durable Objects contain only session/type/pending.
+ * Preserve real exact retries where original checkout facts establish them,
+ * and refuse monetary, status and recorded-intent contradictions. Do not
+ * claim that legacy createdAt can be reconstructed from absent evidence.
+ */
+for (const [name, changed, pending, expectedStatus] of [
+  ["paid exact", {}, false, 200],
+  ["paid changed amount", { amountTotal: 1 }, false, 409],
+  ["paid changed currency", { currency: "eur" }, false, 409],
+  ["paid changed payment intent", { paymentIntentId: "pi_other" }, false, 409],
+  ["paid changed checkout state", { status: "open" }, false, 409],
+  ["pending exact", {}, true, 200],
+  ["pending impersonates paid", { paymentStatus: "paid" }, true, 409],
+]) test("legacy event receipt qualification: " + name, async () => {
+  const { runtime, rows } = object();
+  await call(runtime, "/checkout", checkout);
+  rows.set("event:evt_immutable_facts", {
+    sessionId: checkout.sessionId, type: "checkout.session.completed", ...(pending ? { pending: true } : {}),
+  });
+  if (!pending) rows.set("entitlement:cs_test", { id: "cs_test", paymentIntentId: "pi_test", status: "active" });
+  const originalRow = structuredClone(rows.get("event:evt_immutable_facts"));
+  const response = await call(runtime, "/claim", {
+    ...originalPaidClaim, paymentStatus: pending ? "unpaid" : "paid", ...changed,
+  });
+  assert.equal(response.status, expectedStatus);
+  assert.deepEqual(await response.json(), { disposition: expectedStatus === 200 ? "duplicate" : "rejected" });
+  assert.deepEqual(rows.get("event:evt_immutable_facts"), originalRow, "legacy rows are not silently migrated");
+});
