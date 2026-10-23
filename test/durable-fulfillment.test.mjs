@@ -34,6 +34,62 @@ test("durable fulfillment keeps checkout records immutable and binds payment ins
   assert.deepEqual(entitlement.goods, checkout.goods);
 });
 
+/** Checkout session idempotency must not conceal a changed buyer or state.
+ * This is distinct from the Stripe audit ACK controls below: a session claim
+ * binds an entitlement to the ORIGINAL checkout's account. Test the actual
+ * Durable Object handler, not a copied sameCheckout function.
+ */
+const checkoutBuyerChanges = [
+  "other@example.test", "buyer2@example.test", "BUYER@example.test",
+  "buyer+other@example.test", "seller@example.test", "support@example.test",
+  "person@example.test", "hello@example.test", "another@elsewhere.test",
+  "buyer@example.invalid", "", null, undefined, 19,
+  { id: "buyer@example.test" },
+];
+const checkoutStateChanges = [
+  "paid", "complete", "failed", "canceled", "closed", "pending",
+  "refunded", "unknown", "expired", "rejected",
+];
+for (const [field, values] of [["account", checkoutBuyerChanges], ["status", checkoutStateChanges]]) {
+  for (const [index, replacement] of values.entries()) {
+    test(`checkout immutable ${field} change ${index} refuses duplicate registration`, async () => {
+      const { runtime, rows } = object();
+      const original = { ...checkout, account: "buyer@example.test", status: "open" };
+      assert.deepEqual(await (await call(runtime, "/checkout", original)).json(), { disposition: "registered" });
+      const response = await call(runtime, "/checkout", { ...original, [field]: replacement });
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), { disposition: "conflict" });
+      assert.deepEqual(rows.get(`checkout:${checkout.sessionId}`), original);
+      assert.equal(rows.has(`entitlement:${checkout.sessionId}`), false);
+    });
+  }
+}
+test("same buyer and state admit idempotent checkout retries without a duplicate entitlement", async () => {
+  const { runtime, rows } = object();
+  const original = { ...checkout, account: "buyer@example.test", status: "open" };
+  assert.deepEqual(await (await call(runtime, "/checkout", original)).json(), { disposition: "registered" });
+  assert.deepEqual(await (await call(runtime, "/checkout", { ...original })).json(), { disposition: "duplicate" });
+  assert.deepEqual(rows.get(`checkout:${checkout.sessionId}`), original);
+  assert.equal(rows.has(`entitlement:${checkout.sessionId}`), false);
+});
+test("missing and explicit null legacy account and status remain equivalent", async () => {
+  const { runtime } = object();
+  assert.deepEqual(await (await call(runtime, "/checkout", checkout)).json(), { disposition: "registered" });
+  assert.deepEqual(await (await call(runtime, "/checkout", { ...checkout, account: null, status: null })).json(),
+    { disposition: "duplicate" });
+});
+test("rejected buyer redirection cannot steal a subsequently settled purchase entitlement", async () => {
+  const { runtime, rows } = object();
+  const original = { ...checkout, account: "buyer@example.test", status: "open" };
+  await call(runtime, "/checkout", original);
+  const conflict = await call(runtime, "/checkout", { ...original, account: "intruder@example.test" });
+  assert.equal(conflict.status, 409);
+  const success = await call(runtime, "/claim", payment);
+  assert.deepEqual(await success.json(), { disposition: "claimed" });
+  assert.equal(rows.get(`entitlement:${checkout.sessionId}`)?.account, "buyer@example.test");
+  assert.deepEqual(rows.get("account:buyer@example.test"), [checkout.sessionId]);
+  assert.equal(rows.has("account:intruder@example.test"), false);
+});
 test("a second event cannot reactivate a durably revoked entitlement", async () => {
   const { runtime } = object();
   await call(runtime, "/checkout", checkout); await call(runtime, "/claim", payment);
