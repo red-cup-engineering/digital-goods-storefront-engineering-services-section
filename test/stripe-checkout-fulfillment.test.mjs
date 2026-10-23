@@ -296,3 +296,63 @@ test('external checkout storage refusal requests Stripe retry, not a pretend pay
  assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
  assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
 });
+
+/** Regression against successful Stripe ACK without an actual audit admission
+ * response. These are isolated audit-adapter negative controls; the earlier
+ * real Durable Object tests separately establish persistence and idempotence. */
+const invalidExternalAuditAcks = [
+ ['undefined',()=>undefined],
+ ['null',()=>null],
+ ['false scalar',()=>false],
+ ['true scalar',()=>true],
+ ['zero scalar',()=>0],
+ ['one scalar',()=>1],
+ ['empty string',()=>'' ],
+ ['arbitrary string',()=> 'ok'],
+ ['empty array',()=>[]],
+ ['singleton array',()=>[1]],
+ ['empty object',()=>({})],
+ ['disposition false without receipt',()=>({duplicate:false})],
+ ['disposition true without receipt',()=>({duplicate:true})],
+ ['null disposition without receipt',()=>({duplicate:null})],
+ ['string false disposition without receipt',()=>({duplicate:'false'})],
+ ['zero disposition without receipt',()=>({duplicate:0})],
+ ['one disposition without receipt',()=>({duplicate:1})],
+ ['array disposition without receipt',()=>({duplicate:[]})],
+ ['object disposition without receipt',()=>({duplicate:{}})],
+ ['undefined disposition with receipt',entry=>({...entry,duplicate:undefined})],
+ ['string true disposition with receipt',entry=>({...entry,duplicate:'true'})],
+ ['numeric zero disposition with receipt',entry=>({...entry,duplicate:0})],
+ ['null disposition with receipt',entry=>({...entry,duplicate:null})],
+ ['altered amount',entry=>({...entry,duplicate:false,record:{...entry.record,amountTotal:0}})],
+ ['altered receipt identity',entry=>({...entry,duplicate:false,record:{...entry.record,id:'urn:stripe-event-receipt:evt_other'}})],
+ ['altered audit category',entry=>({...entry,duplicate:false,category:'unrelated'})],
+ ['contradictory truth',entry=>({...entry,duplicate:false,told:{for:false,against:true}})],
+ ['null record',entry=>({...entry,duplicate:false,record:null})],
+ ['extra private field',entry=>({...entry,duplicate:false,record:{...entry.record,privateNote:'private'}})],
+ ['altered provider event identity',entry=>({...entry,duplicate:false,record:{...entry.record,stripeEventId:'evt_other'}})]
+];
+for(const [name,reply] of invalidExternalAuditAcks)
+ test('external signed event refuses an unconfirmed audit ACK: '+name,async()=>{
+  const f=await fixture();
+  const env={...externalEnvironment(f),audit:{record:async entry=>reply(entry)}};
+  const response=await fulfillStripeCheckoutWebhook(request(externalCheckout()),env);
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:'external-checkout-audit-unavailable'});
+  assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
+  assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
+ });
+for(const duplicate of [false,true])
+ test('external signed event interprets matching mock audit ACK: '+duplicate,async()=>{
+  const f=await fixture();
+  const env={...externalEnvironment(f),
+   audit:{record:async entry=>({...entry,duplicate})}};
+  const response=await fulfillStripeCheckoutWebhook(request(externalCheckout()),env);
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{
+   accepted:true,externalCheckoutObserved:true,duplicate,settlement:'not-established'
+  });
+  // A matching mock ACK exercises response compatibility, not actual storage.
+  assert.equal(f.rows.has('audit:urn:stripe-event-receipt:evt_external_support_1'),false);
+  assert.equal(await f.fulfillment.getEntitlement('cs_external_support_1'),null);
+ });
