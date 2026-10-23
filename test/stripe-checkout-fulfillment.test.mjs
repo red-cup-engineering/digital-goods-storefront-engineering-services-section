@@ -32,6 +32,32 @@ test("a delayed paid event fulfills through the real Stripe signature and durabl
   assert.equal(f.rows.get("event:evt_async").type, "checkout.session.async_payment_succeeded");
 });
 
+test("signed payment event ID cannot silently become the duplicate of another checkout session", async () => {
+  const f = await fixture();
+  await f.fulfillment.recordCheckout({ ...checkout, sessionId: "cs_second" });
+  const first = await fulfillStripeCheckoutWebhook(request(event()), f.env);
+  assert.equal(first.status, 200);
+  const changed = await fulfillStripeCheckoutWebhook(request(event(undefined, { id: "cs_second" })), f.env);
+  assert.equal(changed.status, 409);
+  assert.deepEqual(await changed.json(), { error: "payment-does-not-match-checkout-intent" });
+  assert.equal(await f.fulfillment.getEntitlement("cs_second"), null);
+  assert.equal((await f.fulfillment.getEntitlement(checkout.sessionId)).status, "active");
+  assert.equal(f.rows.get("event:evt_async")?.sessionId, checkout.sessionId);
+  const exactRetry = await fulfillStripeCheckoutWebhook(request(event()), f.env);
+  assert.deepEqual(await exactRetry.json(), { accepted: true, duplicate: true });
+});
+
+test("signed payment event ID cannot be reused with a different Checkout event type", async () => {
+  const f = await fixture();
+  const first = await fulfillStripeCheckoutWebhook(request(event()), f.env);
+  assert.equal(first.status, 200);
+  const changed = await fulfillStripeCheckoutWebhook(request(event("checkout.session.completed")), f.env);
+  assert.equal(changed.status, 409);
+  assert.deepEqual(await changed.json(), { error: "payment-does-not-match-checkout-intent" });
+  assert.equal(f.rows.get("event:evt_async")?.type, "checkout.session.async_payment_succeeded");
+  assert.equal([...f.rows.keys()].filter(key => key.startsWith("entitlement:")).length, 1);
+});
+
 test("unpaid completion cannot fulfill, then delayed success does", async () => {
   const f = await fixture();
   const pending = { ...event("checkout.session.completed", { payment_status: "unpaid" }), id: "evt_pending" };
