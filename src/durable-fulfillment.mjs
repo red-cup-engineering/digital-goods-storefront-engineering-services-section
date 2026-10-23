@@ -3,7 +3,11 @@ import { reviewCopyEntitlement } from "./review-copy.mjs";
 
 function reply(value, status = 200) { return Response.json(value ?? null, { status }); }
 function sameCheckout(left, right) {
-  return left && left.sessionId === right.sessionId && left.offeringId === right.offeringId && left.requestDigest === right.requestDigest && left.amountTotal === right.amountTotal && left.currency === right.currency && left.stripeMode === right.stripeMode && JSON.stringify(left.goods) === JSON.stringify(right.goods) && left.release === right.release && JSON.stringify(left.admittedRelease ?? null) === JSON.stringify(right.admittedRelease ?? null);
+  return left && left.sessionId === right.sessionId && left.offeringId === right.offeringId && left.requestDigest === right.requestDigest && left.amountTotal === right.amountTotal && left.currency === right.currency && left.stripeMode === right.stripeMode && JSON.stringify(left.goods) === JSON.stringify(right.goods) && left.release === right.release && JSON.stringify(left.admittedRelease ?? null) === JSON.stringify(right.admittedRelease ?? null)
+    // The same Checkout session cannot switch the bound buyer or status on a
+    // retry. Absent and explicit null are equivalent for legacy consumers.
+    && (left.account ?? null) === (right.account ?? null)
+    && (left.status ?? null) === (right.status ?? null);
 }
 const EMAIL = /^[^\s@]+@[^\s@]+$/u;
 const GIFT_ID = /^gift-[0-9a-f-]{36}$/u;
