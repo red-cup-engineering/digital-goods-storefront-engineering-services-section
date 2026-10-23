@@ -101,6 +101,51 @@ test("a second event cannot reactivate a durably revoked entitlement", async () 
   assert.equal(entitlement.status, "revoked");
 });
 
+/** A Stripe event id is global to one original event. The older durable
+ * store already persists its session and event type; a reused ID from another
+ * session or a different type must refuse, never claim another paid event was
+ * previously processed. This does not yet prove full immutable event payload
+ * equality, which requires a separately qualified storage contract.
+ */
+const reusedEventSessionIds = ["cs_second", "cs_third", "cs_fourth", "cs_fifth", "cs_sixth"];
+const reusedPendingEventSessionIds = ["cs_pending_second", "cs_pending_third", "cs_pending_fourth", "cs_pending_fifth"];
+const eventIdentityAdversaries = [
+  ...reusedEventSessionIds.map(sessionId => ({ name: "paid second session " + sessionId, changed: { sessionId }, pending: false })),
+  { name: "paid changed event type", changed: { eventType: "checkout.session.async_payment_succeeded" }, pending: false },
+  ...reusedPendingEventSessionIds.map(sessionId => ({ name: "pending second session " + sessionId, changed: { sessionId }, pending: true })),
+  { name: "pending changed event type", changed: { eventType: "checkout.session.async_payment_succeeded" }, pending: true },
+];
+for (const { name, changed, pending } of eventIdentityAdversaries)
+  test("same Stripe event ID refuses " + name, async () => {
+    const { runtime, rows } = object();
+    await call(runtime, "/checkout", checkout);
+    if (changed.sessionId) await call(runtime, "/checkout", { ...checkout, sessionId: changed.sessionId });
+    const original = { ...payment, eventId: "evt_original", eventType: "checkout.session.completed", paymentStatus: pending ? "unpaid" : "paid" };
+    const first = await call(runtime, "/claim", original);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { disposition: pending ? "pending" : "claimed" });
+    const row = structuredClone(rows.get("event:evt_original"));
+    const conflict = { ...original, ...changed,
+      paymentStatus: pending && changed.eventType ? "paid" : original.paymentStatus };
+    const received = await call(runtime, "/claim", conflict);
+    assert.equal(received.status, 409);
+    assert.deepEqual(await received.json(), { disposition: "rejected" });
+    assert.deepEqual(rows.get("event:evt_original"), row);
+    if (changed.sessionId) assert.equal(rows.has("entitlement:" + changed.sessionId), false);
+    if (pending) assert.equal(rows.has("entitlement:" + checkout.sessionId), false);
+    else assert.equal(rows.get("entitlement:" + checkout.sessionId)?.status, "active");
+  });
+for (const pending of [false, true])
+  test("same Stripe event ID with exactly the original session and type remains duplicate: " + pending, async () => {
+    const { runtime, rows } = object();
+    await call(runtime, "/checkout", checkout);
+    const original = { ...payment, eventId: "evt_stable", eventType: "checkout.session.completed",
+      paymentStatus: pending ? "unpaid" : "paid" };
+    await call(runtime, "/claim", original);
+    const row = structuredClone(rows.get("event:evt_stable"));
+    assert.deepEqual(await (await call(runtime, "/claim", { ...original })).json(), { disposition: "duplicate" });
+    assert.deepEqual(rows.get("event:evt_stable"), row);
+  });
 test("audit receipts require their nested Stripe receipt id", async () => {
   const { runtime, rows } = object();
   assert.equal((await call(runtime, "/audit", { record: { id: "urn:stripe-checkout-receipt:cs_test" } })).status, 200);
