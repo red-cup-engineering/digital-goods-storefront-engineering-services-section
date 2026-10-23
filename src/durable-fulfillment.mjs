@@ -50,7 +50,16 @@ export class DigitalGoodsFulfillment {
     if (request.method === "POST" && url.pathname === "/claim") return this.ctx.storage.transaction(async (transaction) => {
       const eventType = body.eventType ?? "checkout.session.completed";
       if (!CHECKOUT_EVENTS.includes(eventType)) return reply({ disposition: "rejected" }, 409);
-      if (await transaction.get(`event:${body.eventId}`)) return reply({ disposition: "duplicate" });
+      const priorEvent = await transaction.get(`event:${body.eventId}`);
+      if (priorEvent) {
+        // One original provider event names one Checkout session and event
+        // type. An existing payment event may not be silently treated as the
+        // duplicate of a different customer's payment. Older stored rows
+        // already retain both fields; no migration or new storage authority.
+        if (priorEvent.sessionId !== body.sessionId || priorEvent.type !== eventType)
+          return reply({ disposition: "rejected" }, 409);
+        return reply({ disposition: "duplicate" });
+      }
       const checkout = await transaction.get(`checkout:${body.sessionId}`);
       const matched = checkout && body.status === "complete" && checkout.offeringId === body.offeringId && checkout.requestDigest === body.requestDigest && checkout.amountTotal === body.amountTotal && checkout.currency === body.currency && checkout.stripeMode === body.stripeMode;
       if (!matched) return reply({ disposition: "rejected" }, 409);
