@@ -109,8 +109,13 @@ export class DigitalGoodsFulfillment {
         return reply({ disposition: "pending" });
       }
       if (body.paymentStatus !== "paid") return reply({ disposition: "rejected" }, 409);
-      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, claimFacts });
       const entitlementKey = `entitlement:${body.sessionId}`; const existing = await transaction.get(entitlementKey);
+      // A second signed event for one Checkout is not another payment.
+      // Compare the original settled payment intent BEFORE recording the new
+      // event ID: an acknowledged mismatch would permanently suppress retries.
+      if (existing && (existing.paymentIntentId ?? null) !== (body.paymentIntentId ?? null))
+        return reply({ disposition: "rejected" }, 409);
+      await transaction.put(`event:${body.eventId}`, { sessionId: body.sessionId, type: eventType, claimFacts });
       if (existing) return reply({ disposition: "duplicate-session" });
       const account = accountOf(checkout.account);
       await transaction.put(entitlementKey, { id: body.sessionId, kind: "purchase", sessionId: body.sessionId, offeringId: checkout.offeringId, goods: checkout.goods, release: checkout.release ?? null, admittedRelease: checkout.admittedRelease ?? null, account, status: "active", paymentIntentId: body.paymentIntentId ?? null, createdAt: body.createdAt ?? null });
