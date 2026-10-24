@@ -10,7 +10,7 @@
 The house digital-goods storefront: checkout-model, delivery, and receipt
 semantics usable by every product line (ebooks, newsletters, cohort, merch,
 briefing). It composes payment rails rather than re-implementing them —
-the card rail is `@red-cup-engineering/stripe-services-section`, pinned
+the card rail is `@red-cup-engineering/stripe-engineering-services-section`, pinned
 exactly — and derives Stripe's fixed-offerings shape from this package's
 own catalog, so the catalog is the one source of truth.
 
