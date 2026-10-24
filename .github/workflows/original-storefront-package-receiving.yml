@@ -4,6 +4,9 @@ name: Original storefront package receiving
 on:
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: original-storefront-receiving-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -19,7 +22,7 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - name: Resolve actual declared dependency graph without publishing
-        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false --fetch-retries=0 --fetch-timeout=20000
       - name: Run original source check and all three mandatory receiving suites
         run: |
           npm run check
