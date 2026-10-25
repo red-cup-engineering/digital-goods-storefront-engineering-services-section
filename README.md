@@ -14,6 +14,25 @@ the card rail is `@red-cup-engineering/stripe-services-section`, pinned
 exactly — and derives Stripe's fixed-offerings shape from this package's
 own catalog, so the catalog is the one source of truth.
 
+## Authored recurring orders
+
+An explicit `mode: "subscription"` offering retains its authored billing
+interval and immutable contract reference/revision through the original Stripe
+Checkout projection. It requires the existing signed-in reader and the same
+Durable Object audit capability before Checkout. The default offering remains
+a one-time payment. Recurring orders never grant perpetual goods or downloads.
+
+The host-only `runtime.readSubscriptionOrder(request, {subscriptionId}, env)`
+joins the original authenticated account to its retained Checkout, exact host
+buyer actor and signed subscription evidence. Its result supplies the original
+Stripe 0.2.1 billing reader's input and the authored contract identity. It does
+not supply paid status, content rights or a public API. The host must separately
+receive current billing and original product rights before each data/content
+delivery. No live product, price, customer or contract is created here.
+
+The complete component contract, custody bounds and native receiving scenario
+are in [Recurring order custody](docs/RECURRING-ORDER-CUSTODY.md).
+
 ## Source language in search and retailer listings
 
 An offering's optional `book.language` is a BCP 47 language tag describing

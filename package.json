@@ -1,6 +1,6 @@
 {
   "name": "@red-cup-engineering/digital-goods-storefront-services-section",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "type": "module",
   "description": "The house digital-goods storefront: checkout-model, delivery, and receipt semantics usable by every product line (ebooks, newsletters, cohort, merch, briefing). Composes the card rail (stripe-services-section) rather than re-implementing it; catalog validation, view-model shaping, TUFTE storefront presentation, reader accounts (Google sign-in), gifts, stamped review copies and a library per account, paid-release delivery, HMAC download tokens (Web Crypto only, Worker-safe), and plain-JSON receipts.",
   "repository": {
@@ -28,15 +28,17 @@
     "apps",
     "test/stripe-checkout-fulfillment.test.mjs",
     "test/durable-fulfillment.test.mjs",
-    "test/worker-runtime.test.mjs"
+    "test/worker-runtime.test.mjs",
+    "test/recurring-order.test.mjs",
+    "docs/RECURRING-ORDER-CUSTODY.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/digital-goods-storefront.mjs && node --check src/worker-runtime.mjs && node --check src/stripe-checkout-fulfillment.mjs && node --check src/durable-fulfillment.mjs && node --check scripts/validate-catalog.mjs && node --check scripts/render-catalog.mjs && node --check scripts/issue-download-token.mjs && node --check scripts/derive-stripe-offerings.mjs && node --check apps/storefront-cli.mjs && node --check src/paid-release.mjs && node --check src/paid-release-staging.mjs && node --check scripts/stage-paid-release.mjs && node --check src/storefront-presentation.mjs && node --check src/retail-listings.mjs && node --check scripts/derive-retail-listings.mjs && node --check src/review-copy.mjs && node --check scripts/stage-review-copy.mjs && node --check src/shop-mcp.mjs"
+    "check": "node --check src/digital-goods-storefront.mjs && node --check src/worker-runtime.mjs && node --check src/stripe-checkout-fulfillment.mjs && node --check src/durable-fulfillment.mjs && node --check src/subscription-order.mjs && node --check scripts/validate-catalog.mjs && node --check scripts/render-catalog.mjs && node --check scripts/issue-download-token.mjs && node --check scripts/derive-stripe-offerings.mjs && node --check apps/storefront-cli.mjs && node --check src/paid-release.mjs && node --check src/paid-release-staging.mjs && node --check scripts/stage-paid-release.mjs && node --check src/storefront-presentation.mjs && node --check src/retail-listings.mjs && node --check scripts/derive-retail-listings.mjs && node --check src/review-copy.mjs && node --check scripts/stage-review-copy.mjs && node --check src/shop-mcp.mjs"
   },
   "dependencies": {
     "@red-cup-engineering/javascript-node-services-section": "0.3.2",
-    "@red-cup-engineering/stripe-services-section": "0.1.11",
+    "@red-cup-engineering/stripe-services-section": "0.2.1",
     "@red-cup-engineering/computer-web-server": "0.6.2",
     "@red-cup-engineering/web-page-tiling-engine": "0.14.2",
     "@red-cup-engineering/mcp-engineering-services-section": "0.1.6"
@@ -53,6 +55,7 @@
   "receivingTests": [
     "test/stripe-checkout-fulfillment.test.mjs",
     "test/durable-fulfillment.test.mjs",
-    "test/worker-runtime.test.mjs"
+    "test/worker-runtime.test.mjs",
+    "test/recurring-order.test.mjs"
   ]
 }
