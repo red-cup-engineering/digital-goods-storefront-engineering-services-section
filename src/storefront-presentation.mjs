@@ -19,6 +19,14 @@ export function displayPrice(priceCents, currency) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency).toUpperCase() }).format(priceCents / 100);
 }
 
+/** Keep the authored billing period visible beside a recurring amount. */
+export function displayOfferingPrice(offering) {
+  const amount = displayPrice(offering.priceCents, offering.currency);
+  if (offering.mode !== "subscription") return amount;
+  const count = offering.recurring.intervalCount ?? 1, interval = offering.recurring.interval;
+  return `${amount} / ${count === 1 ? interval : `${count} ${interval}s`}`;
+}
+
 function kilobytes(bytes) {
   return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("en-US")} KB`;
 }
@@ -32,7 +40,7 @@ function formatsOf(book) {
 function facts(offering) {
   const book = offering.book;
   const rows = [];
-  if (offering.priceCents != null) rows.push({ label: "Price", value: displayPrice(offering.priceCents, offering.currency) });
+  if (offering.priceCents != null) rows.push({ label: "Price", value: displayOfferingPrice(offering) });
   if (formatsOf(book).length) rows.push({ label: "Formats", value: formatsOf(book).join(" and ") });
   if (book?.contents?.length) rows.push({ label: "Length", value: `${book.contents.length} parts${book.edition?.pages ? `, ${book.edition.pages} pages` : ""}` });
   if (book?.series) rows.push({ label: "Series", value: `${book.series.name}, number ${book.series.number}`, detailOnly: true });
@@ -76,7 +84,9 @@ function detailNodes(offering) {
 export function structuredDataFor(offering, { origin, href, image }) {
   // An offer is stated only while it can be taken: an unarmed checkout is not a
   // preorder, and a search engine told otherwise would list a price no one can pay.
-  const offer = offering.priceCents != null && offering.buyable ? {
+  // The legacy one-time Offer projection has no recurring-price contract.
+  // The authored billing interval remains explicit in the public catalog and page.
+  const offer = offering.mode !== "subscription" && offering.priceCents != null && offering.buyable ? {
     "@type": "Offer", price: (offering.priceCents / 100).toFixed(2), priceCurrency: String(offering.currency).toUpperCase(), url: `${origin}${href}`,
     availability: "https://schema.org/InStock",
   } : undefined;

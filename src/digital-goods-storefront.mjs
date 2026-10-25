@@ -14,6 +14,31 @@
 const OFFERING_STATUSES = new Set(["live", "test-only", "coming-soon", "external"]);
 const PAID_STATUSES = new Set(["live", "test-only"]);
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const RECURRING_INTERVALS = new Set(["day", "week", "month", "year"]);
+const CONTRACT_REVISION = /^ni:\/\/\/sha-256;[A-Za-z0-9_-]{43}$/u;
+
+function recurringOfferingError(offering) {
+  if (offering.mode !== undefined && !["payment", "subscription"].includes(offering.mode)) return "mode must be payment or subscription";
+  if (offering.mode !== "subscription") {
+    return ["recurring", "contractRef", "contractRevision"].some(key => offering[key] !== undefined)
+      ? "recurring contract fields require explicit subscription mode" : null;
+  }
+  const recurring = offering.recurring;
+  if (!recurring || typeof recurring !== "object" || Array.isArray(recurring) ||
+      Object.keys(recurring).some(key => !["interval", "intervalCount"].includes(key)) ||
+      !RECURRING_INTERVALS.has(recurring.interval) ||
+      (recurring.intervalCount !== undefined && (!Number.isSafeInteger(recurring.intervalCount) || recurring.intervalCount < 1)))
+    return "subscription requires an authored recurring interval and positive intervalCount";
+  let reference;
+  try { reference = new URL(offering.contractRef); } catch { return "subscription requires an authored contractRef"; }
+  if (typeof offering.contractRef !== "string" || offering.contractRef.length > 2048 ||
+      !["https:", "urn:", "ni:"].includes(reference.protocol) || reference.username || reference.password ||
+      !CONTRACT_REVISION.test(offering.contractRevision ?? "")) return "subscription requires an authored contractRef and immutable contractRevision";
+  if (offering.release !== undefined || offering.book !== undefined ||
+      (offering.goods !== undefined && (!Array.isArray(offering.goods) || offering.goods.length)))
+    return "subscription cannot grant perpetual goods or a paid release";
+  return null;
+}
 
 /** One source-derived BCP 47 language for books: use native Intl rather
  * than a storefront-specific copy of the standard language-tag grammar.
@@ -91,6 +116,8 @@ function validateOffering(offering, index, seenIds, errors) {
   }
   if (!isNonEmptyString(offering.title)) errors.push({ path, message: "title is required" });
   if (!isNonEmptyString(offering.line)) errors.push({ path, message: "line is required" });
+  const recurringError = recurringOfferingError(offering);
+  if (recurringError) errors.push({ path, message: recurringError });
   if (!OFFERING_STATUSES.has(offering.status)) {
     errors.push({ path, message: `status must be one of ${[...OFFERING_STATUSES].join(", ")}` });
     return;
@@ -100,7 +127,7 @@ function validateOffering(offering, index, seenIds, errors) {
       errors.push({ path, message: "priceCents must be a positive integer" });
     }
     if (!isNonEmptyString(offering.currency)) errors.push({ path, message: "currency is required" });
-    if (!hasGoods(offering) && !hasExternalUrl(offering) && !hasRelease(offering)) {
+    if (!hasGoods(offering) && !hasExternalUrl(offering) && !hasRelease(offering) && offering.mode !== "subscription") {
       errors.push({ path, message: "goods, release or externalUrl is required" });
     }
     if (hasGoods(offering)) {
@@ -156,7 +183,8 @@ export function publicCatalog(catalog) {
   const file = source => pick(source, ["format", "bytes", "sha256", "contentType", "byteLength"]);
   const offerings = catalog.offerings.map(source => {
     const offering = pick(source, ["id","title","subtitle","blurb","keywords","cover",
-      "status","priceCents","currency","release","agentOfferUrl","externalUrl"]);
+      "status","priceCents","currency","release","agentOfferUrl","externalUrl",
+      "mode","recurring","contractRef","contractRevision"]);
     if (source.goods) offering.goods = source.goods.map(good => pick(good,
       ["name","contentType","byteLength","sha256"]));
     if (source.book) {
@@ -211,8 +239,9 @@ function stateFor(offering, checkoutArmed) {
  * @param {{checkoutArmed: boolean}} options
  * @returns {object} the offering view model
  */
-function offeringModel(offering, { checkoutArmed }) {
-  const buyable = PAID_STATUSES.has(offering.status) && checkoutArmed;
+function offeringModel(offering, { checkoutArmed, recurringCheckoutArmed }) {
+  const selectedArmed = offering.mode === "subscription" ? recurringCheckoutArmed : checkoutArmed;
+  const buyable = PAID_STATUSES.has(offering.status) && selectedArmed;
   return {
     id: offering.id,
     title: offering.title,
@@ -221,6 +250,8 @@ function offeringModel(offering, { checkoutArmed }) {
     status: offering.status,
     priceCents: offering.priceCents ?? null,
     currency: offering.currency ?? null,
+    ...(offering.mode === "subscription" ? { mode: offering.mode, recurring: { ...offering.recurring },
+      contractRef: offering.contractRef, contractRevision: offering.contractRevision } : {}),
     cover: offering.cover ?? null,
     externalUrl: offering.externalUrl ?? null,
     goods: (offering.goods ?? []).map((good) => ({ name: good.name, key: good.key, contentType: good.contentType, byteLength: good.byteLength, sha256: good.sha256 })),
@@ -230,7 +261,7 @@ function offeringModel(offering, { checkoutArmed }) {
     keywords: offering.keywords ?? [],
     agentOfferUrl: offering.agentOfferUrl ?? null,
     buyable,
-    state: stateFor(offering, checkoutArmed),
+    state: stateFor(offering, selectedArmed),
   };
 }
 
@@ -242,10 +273,10 @@ function offeringModel(offering, { checkoutArmed }) {
  * @param {{checkoutArmed?: boolean}} [options]
  * @returns {{merchant: object, offerings: object[]}}
  */
-export function catalogModel(catalog, { checkoutArmed = false } = {}) {
+export function catalogModel(catalog, { checkoutArmed = false, recurringCheckoutArmed = false } = {}) {
   return {
     merchant: catalog.merchant,
-    offerings: catalog.offerings.map((offering) => offeringModel(offering, { checkoutArmed })),
+    offerings: catalog.offerings.map((offering) => offeringModel(offering, { checkoutArmed, recurringCheckoutArmed })),
   };
 }
 
@@ -280,10 +311,14 @@ export function prioritizeStorefrontOfferings(offerings) {
  * @returns {object} the stripe-services-section offerings.json entry shape
  */
 export function stripeOfferingFor(offering) {
+  const recurringError = recurringOfferingError(offering);
+  if (recurringError) throw new TypeError(recurringError);
   return {
     id: offering.id,
     status: offering.status === "live" ? "live" : "test-only",
-    mode: "payment",
+    mode: offering.mode ?? "payment",
+    ...(offering.mode === "subscription" ? { recurring: { ...offering.recurring },
+      contractRef: offering.contractRef, contractRevision: offering.contractRevision } : {}),
     currency: offering.currency,
     unitAmount: offering.priceCents,
     name: offering.title,
