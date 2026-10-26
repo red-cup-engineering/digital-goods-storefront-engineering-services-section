@@ -5,7 +5,13 @@ const EVENT_CATEGORY = "stripe-webhook-event-admission.events";
 const CHECKOUT_CATEGORY = "stripe-checkout-session-creation.receipts";
 const SUBSCRIPTION = /^sub_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$/u;
 const bindingFields = ["requestDigest", "offeringId", "customerSettlement"];
+const GOOGLE_ISSUER = "https://accounts.google.com";
 export const subscriptionOrderRefusal = reason => ({ type: "StorefrontSubscriptionOrderRefusal", reason });
+export function subscriptionBuyerPrincipal(identity) {
+  return identity?.issuer === GOOGLE_ISSUER && typeof identity.subject === "string"
+    && identity.subject.length > 0 && identity.subject.length <= 512
+    ? { issuer: GOOGLE_ISSUER, subject: identity.subject } : null;
+}
 function selectionOf(value) {
   return value && typeof value === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(value))
     && Reflect.ownKeys(value).length === 1 && Object.hasOwn(Object.getOwnPropertyDescriptor(value, "subscriptionId") ?? {}, "value")
@@ -14,7 +20,7 @@ function selectionOf(value) {
 /** The authenticated account comes only from the original host reader. This
  * projection joins existing order custody; it neither reads current provider
  * billing nor supplies rights, access periods or an entitlement. */
-export async function readSubscriptionOrderBinding(selection, { account, buyerActor, catalog, fulfillment, audit }) {
+export async function readSubscriptionOrderBinding(selection, { account, buyerActor, buyerPrincipal, catalog, fulfillment, audit }) {
   if (!selectionOf(selection)) return subscriptionOrderRefusal("invalid-subscription-selector");
   if (!account) return subscriptionOrderRefusal("authenticated-reader-required");
   if (!fulfillment || typeof fulfillment.getCheckout !== "function" || !audit || audit !== fulfillment.audit
@@ -52,11 +58,19 @@ export async function readSubscriptionOrderBinding(selection, { account, buyerAc
         || checkout.offering.mode !== "subscription" || checkout.request?.quantity !== 1
         || digest({ actor: buyerActor, request: checkout.request, offering: checkout.offering }) !== binding.requestDigest)
       return subscriptionOrderRefusal("authenticated-original-checkout-required");
+    // A cooperating host must match the stable identity originally retained at
+    // Checkout. Email-only historical custody remains readable by its original
+    // browser adapter, but cannot establish this stronger cross-service join.
+    const originalPrincipal = subscriptionBuyerPrincipal(checkout.buyerPrincipal);
+    if (buyerPrincipal !== undefined && (!originalPrincipal || buyerPrincipal.issuer !== originalPrincipal.issuer
+        || buyerPrincipal.subject !== originalPrincipal.subject))
+      return subscriptionOrderRefusal("original-checkout-principal-mismatch");
     const offerings = catalog.offerings.filter(item => item.id === binding.offeringId);
     if (offerings.length !== 1 || offerings[0].mode !== "subscription" || offerings[0].status !== "live"
         || digest(stripeOfferingFor(offerings[0])) !== digest(checkout.offering))
       return subscriptionOrderRefusal("original-authored-contract-changed-or-unavailable");
     return { type: "StorefrontSubscriptionOrder", subscriber: account, stripeSessionId: checkout.sessionId,
+      ...(originalPrincipal ? { buyerPrincipal: originalPrincipal } : {}),
       contractRef: checkout.offering.contractRef, contractRevision: checkout.offering.contractRevision,
       billingInput: { authenticatedActor: buyerActor, subscriptionId, requestDigest: binding.requestDigest, offeringId: binding.offeringId } };
   } catch { return subscriptionOrderRefusal("original-order-custody-unavailable"); }

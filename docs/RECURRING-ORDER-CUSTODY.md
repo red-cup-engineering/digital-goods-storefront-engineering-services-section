@@ -28,10 +28,13 @@ missing and the original Stripe live admission still refuses them.
 
 R2. A recurring Checkout requires the original authenticated Google reader and
 the original fulfillment/audit capabilities before any provider invocation. Its
-durable Checkout record retains the normalized verified account, the exact
-host `buyerActor`, the original request and Stripe offering projection. The
-account is not the Stripe actor or customer ID. A retry cannot replace any of
-these bindings. Existing one-time Checkout records need no migration.
+durable Checkout record retains the normalized verified account, the Google
+issuer and stable subject in `buyerPrincipal`, the exact host `buyerActor`, the
+original request and Stripe offering projection. The subject comes only from
+the original Web Google session reader; the browser cannot supply it in the
+Checkout body. The account is not the Stripe actor or customer ID. A retry
+cannot replace any of these bindings, including by retaining an email and
+changing its subject. Existing one-time Checkout records need no migration.
 
 R3. `createDurableFulfillment(...).audit.query({category, limit?, strict:true})`
 reads the existing `audit:` namespace, using the original Durable Object
@@ -75,6 +78,22 @@ the unchanged authored offering/contract. It returns only a private
 Checkout session, contract reference/revision and exact `billingInput` for
 Stripe `resolveSubscriptionAccess`. It creates no HTTP route or access grant.
 Unknown/legacy/unbound orders and contradictory evidence return a typed refusal.
+
+The cooperating application instead uses the same original join through
+`runtime.readSubscriptionOrderForPrincipal(identity, {subscriptionId}, env)`.
+`identity` is the host's provider-verified `{issuer, subject, email,
+emailVerified}`; only Google issuer `https://accounts.google.com`, a nonempty
+stable subject and a verified normalized account are admitted. This method is
+a server capability, not a verifier for an arbitrary identity assertion. Bind
+it only to the receiving host's established Google login/principal reader.
+Never expose it directly as an HTTP identity-body endpoint or forward a Shop
+browser cookie between services. The server selects the subscription; the
+original stored `buyerPrincipal` and account must both match. A subscription
+ID, matching email, customer metadata or historical email-only Checkout cannot
+supply the missing stable identity. A successful read returns the retained
+`buyerPrincipal` beside the original order fields. Missing, changed or revoked
+billing still requires the independent Stripe read below. This addition does
+not change the existing cookie-based reader or rewrite historical orders.
 
 R6. The receiving host must pass the resulting `billingInput` to original
 Stripe 0.2.1 with this same audit store, source-owned merchant/catalog, actual

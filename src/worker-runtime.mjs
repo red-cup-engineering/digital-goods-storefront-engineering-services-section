@@ -5,7 +5,7 @@ import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/
 import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
 import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
-import { readSubscriptionOrderBinding } from "./subscription-order.mjs";
+import { readSubscriptionOrderBinding, subscriptionBuyerPrincipal, subscriptionOrderRefusal } from "./subscription-order.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
 export { SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
@@ -202,8 +202,10 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const { env, reader } = context.capabilities;
     const id = context.params.id; const item = offering(id);
     if (!item || !PAID.has(item.status)) return message(context, "Not found", "No such offering.", 404);
+    const buyerPrincipal = reader?.provider === "google" ? subscriptionBuyerPrincipal({
+      issuer: "https://accounts.google.com", subject: reader.subject }) : null;
     if (item.mode === "subscription") {
-      if (!reader || !accountOf(reader.email)) return message(context, "Sign in first", "Sign in to associate this subscription with your account.", 401);
+      if (!buyerPrincipal || !accountOf(reader.email)) return message(context, "Sign in first", "Sign in to associate this subscription with your account.", 401);
       if (!env.audit || env.audit !== env.fulfillment?.audit || typeof env.audit.query !== "function")
         return message(context, "Checkout unavailable", "The subscription's order records are unavailable. Please try again later.", 503);
       // Refuse damaged prior custody before creating a provider session.
@@ -223,7 +225,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const accepted = await invokeCheckout({ "@context": solicitation["@context"], id: `${solicitation.id}:accept`, type: "Accept", actor: buyerActor, target: solicitation.target, object: { offer: offered } }, { env, catalog: railCatalog, store: env.audit });
     if (accepted.type !== "Accept") return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 502);
     const registration = await env.fulfillment.recordCheckout({ sessionId: accepted.object.stripeSessionId, offeringId: id, requestDigest: accepted.object.requestDigest, amountTotal: item.priceCents, currency: item.currency, stripeMode: accepted.object.stripeMode, goods: item.goods, release: item.release ?? null, admittedRelease: admittedRelease ?? null, account: reader ? accountOf(reader.email) : null, status: "open",
-      ...(item.mode === "subscription" ? { mode: "subscription", buyerActor,
+      ...(item.mode === "subscription" ? { mode: "subscription", buyerActor, buyerPrincipal,
         request: structuredClone(offered.object.request), offering: structuredClone(offered.object.offering) } : {}) });
     if (!registration || registration.failed || !["registered", "duplicate"].includes(registration.disposition)) return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 503);
     return Response.redirect(accepted.object.checkoutUrl, 303);
@@ -527,6 +529,16 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       const reader = readerOf(request, env);
       return readSubscriptionOrderBinding(selection, { account: reader ? accountOf(reader.email) : null,
         buyerActor, catalog, fulfillment: env.fulfillment, audit: env.audit });
+    },
+    /** Server capability for a cooperating host's original verified Google
+     * identity. This is deliberately not a public HTTP route or a token mint.
+     * The host must obtain identity from its provider, never a request body. */
+    async readSubscriptionOrderForPrincipal(identity, selection, env) {
+      const buyerPrincipal = subscriptionBuyerPrincipal(identity), account = accountOf(identity?.email);
+      if (!buyerPrincipal || identity.emailVerified !== true || !account || identity.email.length > 320)
+        return subscriptionOrderRefusal("verified-google-principal-required");
+      return readSubscriptionOrderBinding(selection, { account, buyerActor, buyerPrincipal,
+        catalog, fulfillment: env.fulfillment, audit: env.audit });
     },
     async fetch(request, env) {
     const url = new URL(request.url);
