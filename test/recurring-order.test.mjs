@@ -122,6 +122,7 @@ test('original authenticated reader, Checkout request and exact host actor are r
   assert.equal(f.calls[0].form['subscription_data[metadata][customer_settlement]'], ACTOR);
   assert.notEqual(ACTOR, ACCOUNT); assert.ok(!JSON.stringify(f.calls[0].form).includes(ACCOUNT));
   assert.equal(held.account, ACCOUNT); assert.equal(held.buyerActor, ACTOR); assert.equal(held.mode, 'subscription');
+  assert.deepEqual(held.buyerPrincipal, { issuer: 'https://accounts.google.com', subject: 'fixture-reader' });
   assert.equal(digest({ actor: ACTOR, request: held.request, offering: held.offering }), held.requestDigest);
   assert.equal(held.offering.contractRevision, CONTRACT);
   assert.equal(await f.fulfillment.getEntitlement('cs_fixture'), null);
@@ -130,6 +131,9 @@ test('original authenticated reader, Checkout request and exact host actor are r
 test('same durable recurring Checkout cannot switch its original actor, request, offering or account', async () => {
   const f = await fixture(), held = await f.order();
   for (const change of [{ buyerActor: 'urn:other:actor' }, { account: 'other@example.test' }, { mode: 'payment' },
+    { buyerPrincipal: { issuer: 'https://accounts.google.com', subject: 'a-different-person' } },
+    { buyerPrincipal: { issuer: 'https://other.example', subject: 'fixture-reader' } },
+    { buyerPrincipal: undefined },
     { request: { ...held.request, customerReference: 'switched' } },
     { offering: { ...held.offering, contractRevision: 'ni:///sha-256;' + 'b'.repeat(43) } }]) {
     assert.equal((await f.fulfillment.recordCheckout({ ...held, ...change })).disposition, 'conflict');
@@ -160,6 +164,41 @@ test('host join rejects another or absent reader and selectors that supply ident
   for (const extra of [{ account: ACCOUNT }, { buyerActor: ACTOR }, { requestDigest: (await f.order()).requestDigest },
     { offeringId: originalOffering.id }, { root: '/tmp/other' }, { contractRef: originalOffering.contractRef }])
     assert.equal((await f.read(ACCOUNT, { subscriptionId: 'sub_fixture', ...extra })).type, 'StorefrontSubscriptionOrderRefusal');
+});
+
+test('cooperating host reads the original subscription through its verified stable subject without a browser cookie', async () => {
+  const f = await fixture(); await f.receive(await f.subscriptionEvent());
+  const identity = { issuer: 'https://accounts.google.com', subject: 'fixture-reader', email: ACCOUNT.toUpperCase(), emailVerified: true };
+  const select = { subscriptionId: 'sub_fixture' };
+  const result = await f.runtime.readSubscriptionOrderForPrincipal(identity, select, f.env);
+  assert.equal(result.type, 'StorefrontSubscriptionOrder', JSON.stringify(result));
+  assert.deepEqual(result, await f.read());
+  assert.deepEqual(result.buyerPrincipal, (await f.order()).buyerPrincipal);
+  for (const change of [{ subject: 'another-person' }, { issuer: 'https://other.example' }, { subject: '' },
+    { email: 'other@example.test' }, { emailVerified: false }, { issuer: undefined }, { subject: 'x'.repeat(513) }]) {
+    const refused = await f.runtime.readSubscriptionOrderForPrincipal({ ...identity, ...change }, select, f.env);
+    assert.equal(refused.type, 'StorefrontSubscriptionOrderRefusal', JSON.stringify(change));
+  }
+  assert.equal((await f.runtime.readSubscriptionOrderForPrincipal(identity, { ...select, account: ACCOUNT }, f.env)).type,
+    'StorefrontSubscriptionOrderRefusal');
+  assert.equal((await f.runtime.fetch(new Request('https://shop.test/readSubscriptionOrderForPrincipal', {
+    method: 'POST', headers: { origin: 'https://shop.test', 'content-type': 'application/json' },
+    body: JSON.stringify({ identity, ...select }),
+  }), f.env)).status, 404, 'no new public identity assertion route');
+});
+
+test('historical email-only orders remain original-browser readable and cannot be promoted into subject custody', async () => {
+  const f = await fixture(); await f.receive(await f.subscriptionEvent());
+  const original = f.rows.get('checkout:cs_fixture');
+  const historical = { ...original }; delete historical.buyerPrincipal;
+  f.rows.set('checkout:cs_fixture', historical);
+  assert.equal((await f.read()).type, 'StorefrontSubscriptionOrder');
+  const result = await f.runtime.readSubscriptionOrderForPrincipal({ issuer: 'https://accounts.google.com',
+    subject: 'fixture-reader', email: ACCOUNT, emailVerified: true }, { subscriptionId: 'sub_fixture' }, f.env);
+  assert.equal(result.type, 'StorefrontSubscriptionOrderRefusal');
+  assert.equal(result.reason, 'original-checkout-principal-mismatch');
+  assert.deepEqual(f.rows.get('checkout:cs_fixture'), historical);
+  assert.equal((await f.fulfillment.recordCheckout(original)).disposition, 'conflict', 'retry does not upgrade historical identity');
 });
 
 test('missing, legacy or altered contract bindings cannot become an inferred recurring order', async () => {

@@ -11,6 +11,7 @@ function sameCheckout(left, right) {
     && (left.status ?? null) === (right.status ?? null)
     && (left.mode ?? null) === (right.mode ?? null)
     && (left.buyerActor ?? null) === (right.buyerActor ?? null)
+    && JSON.stringify(left.buyerPrincipal ?? null) === JSON.stringify(right.buyerPrincipal ?? null)
     && JSON.stringify(left.request ?? null) === JSON.stringify(right.request ?? null)
     && JSON.stringify(left.offering ?? null) === JSON.stringify(right.offering ?? null);
 }
