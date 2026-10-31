@@ -7,7 +7,7 @@
 [![Tips welcome](https://img.shields.io/badge/tips-welcome-d4a017)](https://github.com/561-group/.github/blob/main/TIPS.md)
 <!-- 561-group-standards:badges:end -->
 
-The house digital-goods storefront: checkout-model, delivery, and receipt
+The Group digital-goods storefront: checkout-model, delivery, and receipt
 semantics usable by every product line (ebooks, newsletters, cohort, merch,
 briefing). It composes payment rails rather than re-implementing them —
 the card rail is `@red-cup-engineering/stripe-services-section`, pinned
@@ -78,7 +78,7 @@ checkout, or qualify for Google's distinct Book Actions data-feed program.
   reader sign-in through the web server's Google admission (any verified
   Google account; an account is its email), a library per account, gift
   links, a gifts page for the emails the receiver names, and a JSON gift
-  API (`/api/gifts`) for a house agent holding the receiver's gift-agent
+  API (`/api/gifts`) for a Group agent holding the receiver's gift-agent
   key (`env.giftAgent = {key, as}`; the key is compared in constant time,
   and a request's `reference` derives the gift id, so a repeat is a
   `duplicate`, never a second gift), review-copy links
