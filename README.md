@@ -1,11 +1,37 @@
 # digital-goods-storefront-services-section
 
-The house digital-goods storefront: checkout-model, delivery, and receipt
+<!-- 561-group-standards:badges:start -->
+[![Red Cup Engineering](https://img.shields.io/badge/561%20Group-Red%20Cup%20Engineering-c0392b)](https://github.com/red-cup-engineering)
+[![License: MIT](https://img.shields.io/badge/license-MIT-c0392b)](LICENSE)
+[![Indigenous data: CARE](https://img.shields.io/badge/Indigenous%20data-CARE-4b6f44)](https://github.com/red-cup-engineering/.github/blob/main/GOVERNANCE.md)
+[![Tips welcome](https://img.shields.io/badge/tips-welcome-d4a017)](https://github.com/561-group/.github/blob/main/TIPS.md)
+<!-- 561-group-standards:badges:end -->
+
+The Group digital-goods storefront: checkout-model, delivery, and receipt
 semantics usable by every product line (ebooks, newsletters, cohort, merch,
 briefing). It composes payment rails rather than re-implementing them —
 the card rail is `@red-cup-engineering/stripe-services-section`, pinned
 exactly — and derives Stripe's fixed-offerings shape from this package's
 own catalog, so the catalog is the one source of truth.
+
+## Authored recurring orders
+
+An explicit `mode: "subscription"` offering retains its authored billing
+interval and immutable contract reference/revision through the original Stripe
+Checkout projection. It requires the existing signed-in reader and the same
+Durable Object audit capability before Checkout. The default offering remains
+a one-time payment. Recurring orders never grant perpetual goods or downloads.
+
+The host-only `runtime.readSubscriptionOrder(request, {subscriptionId}, env)`
+joins the original authenticated account to its retained Checkout, exact host
+buyer actor and signed subscription evidence. Its result supplies the original
+Stripe 0.2.1 billing reader's input and the authored contract identity. It does
+not supply paid status, content rights or a public API. The host must separately
+receive current billing and original product rights before each data/content
+delivery. No live product, price, customer or contract is created here.
+
+The complete component contract, custody bounds and native receiving scenario
+are in [Recurring order custody](docs/RECURRING-ORDER-CUSTODY.md).
 
 ## Source language in search and retailer listings
 
@@ -23,7 +49,7 @@ checkout, or qualify for Google's distinct Book Actions data-feed program.
 ## Retailer submission drafts: one selected source contract
 
 The original package exports `./retail-submission-drafts` (the
-`scripts/derive-retail-listings.mjs` writer) and
+`src/retail-submission-drafts.mjs` producer) and
 `./retail-submission-schema` (the **single** canonical
 `schema/retailer-submission-draft-collection.schema.json`, JSON Schema
 Draft 2020-12). The package's `files` selection includes this `schema/`
@@ -43,6 +69,21 @@ Kindle Publishing `selectRetailerSubmissionCandidate` consumes the **exported
 canonical schema**, and separately checks the selected compiled source digest,
 blockers, and its own channel support. The human retailer guide is another
 projection of the same writer, not a second record of accepted publication.
+
+Use `generateRetailerSubmissionDrafts` for generation and
+`createRetailerSubmissionDraftCollection` for collection construction. The old
+`deriveRetailListings` and `retailerSubmissionDraftResource` names remain exact
+compatibility aliases; `renderRetailListings` retains its existing signature. The script at
+`scripts/derive-retail-listings.mjs` is a CLI adapter and re-exports them for
+existing direct consumers. Each generation loads the compiled module under
+its source digest; a second generation in the same process therefore reads
+changed source data. If the module bytes change while loading, generation
+fails before replacing either output. This digest identifies the selected
+module, not any independently imported modules or publication authority.
+
+The canonical schema permits unknown author and publisher values only in
+blocked drafts. A proposed candidate requires nonempty source-defined values
+for both fields, even if someone removes the recorded blockers.
 
 This is local typed JSON with content-addressed `ni:///sha-256` references
 and BCP 47 language identities. Shop's public books use schema.org Book/Offer;
@@ -85,7 +126,7 @@ remain separate conditions of receiving.
   reader sign-in through the web server's Google admission (any verified
   Google account; an account is its email), a library per account, gift
   links, a gifts page for the emails the receiver names, and a JSON gift
-  API (`/api/gifts`) for a house agent holding the receiver's gift-agent
+  API (`/api/gifts`) for a Group agent holding the receiver's gift-agent
   key (`env.giftAgent = {key, as}`; the key is compared in constant time,
   and a request's `reference` derives the gift id, so a repeat is a
   `duplicate`, never a second gift), review-copy links
@@ -205,6 +246,16 @@ and all installed payment providers remain unchanged; no new commissioned
 work, profitable sale, backend admission or deployed effect is claimed.
 Source integration and live buyer receiving remain explicit subsequent
 obligations owned by competent Engineering, Operations and Public offices.
+
+## Authenticated external Stripe Payment Link events, without false merchandise sales
+
+The original `src/stripe-checkout-fulfillment.mjs#fulfillStripeCheckoutWebhook` owns the actual Shop webhook receiver. Not every `checkout.session.completed` is a book-store Checkout: Stripe-hosted Payment Links make sessions without a prior `recordCheckout` in the Shop's Durable Object. Previously those signed provider observations reached `claimPayment`, failed its real book-offering/request-digest requirement, and received HTTP 409. Do **not** weaken this requirement to issue an undeserved book entitlement.
+
+This source's narrow `externalPaymentLinks` receiving option admits only bounded, unique Stripe Payment Link **IDs explicitly selected by the Shop operator**. An event must first pass the original raw-body Stripe HMAC verifier and its body-size bound. A matching Checkout receives a redacted, versioned `StripeExternalPaymentLinkObservation` in the **existing** `env.audit.record` Durable Object sink; the record contains the actual provider event/session/link IDs, observed gross amount/currency/payment status and source time, never customer email, raw event, private metadata, copyrighted content, book-rights or a claim of net/settled 561 Group cash. Unknown links, malformed source identities and absent durable audit refuse without creating checkout registrations or goods. The original book Checkout path remains unchanged.
+
+The original `DigitalGoodsFulfillment` `/audit` now receives immutable same-ID economic facts transactionally: retries of the same source event report `duplicate:true` and keep the first stored receipt; an incompatible same-ID record refuses with 409 instead of replacing signed financial history. The returned `SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT` export is surfaced by the actual `./worker-runtime` package entry, so Shop can distinguish installed support from a source-only Git branch. This is an observation, not a subscription, paid invoice, refund, royalty, payout or treasury settlement.
+
+The existing native `test/stripe-checkout-fulfillment.test.mjs` and `test/durable-fulfillment.test.mjs` own positive and adverse signed-wire/durable-receiving checks and are listed as mandatory `receivingTests` in the original npm carrier. These tests were initially added at version 0.4.4; the current version is declared in `package.json`. A versioned registry release and dependent Shop installation must be separately observed. The existing live Stripe webhook is configured only for `checkout.session.completed`, so invoices and recurring renewals require their own authorized event-scope and receipt service; no source edit silently changes that provider setting.
 
 ## Five-custody thread
 

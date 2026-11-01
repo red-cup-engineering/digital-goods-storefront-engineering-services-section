@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import test from "node:test";
 
-import { createDigitalGoodsStorefrontWorker, createPublicShopCatalog } from "../src/worker-runtime.mjs";
+import { createDigitalGoodsStorefrontWorker, createPublicShopCatalog, SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "../src/worker-runtime.mjs";
 import { issueDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { createDurableFulfillment, DigitalGoodsFulfillment } from "../src/durable-fulfillment.mjs";
 import { referencedReviewCopyId, reviewCopyPointerKey } from "../src/review-copy.mjs";
@@ -159,6 +159,8 @@ test("the catalog tells a reader card checkout is not open, offers x402, and sho
   const closed = await (await shop().fetch(new Request("https://shop.test/goods/field-guide"), readerEnv(store, { accounts: {} }))).text();
   assert.match(closed, /Card checkout opens soon/);
   assert.match(closed, /href="https:\/\/market.test\/#field-guide"/);
+  assert.match(closed, /Explore x402 offer/);
+  assert.doesNotMatch(closed, /Buy with USDC over x402/);
   assert.doesNotMatch(closed, /Sign in/);
   assert.match(closed, /"@type":"Book"/);
   const open = await (await shop().fetch(new Request("https://shop.test/"), readerEnv(store))).text();
@@ -305,13 +307,55 @@ test("a separate tenant serves public machine-readable Shop goods without privat
     origin:"https://tenant.example",buyerActor:"urn:ame:tenant"});
   const result = await runtime.fetch(new Request("https://tenant.example/catalog.json"),{});
   assert.equal(result.status,200);
-  assert.match(result.headers.get("content-type"),/application\\/json/u);
+  assert.match(result.headers.get("content-type"),/application\/json/u);
   assert.equal(result.headers.get("cache-control"),"public, max-age=60");
   const body = await result.json();
-    assert.equal(result.headers.get("access-control-allow-origin"),"*");
+  assert.equal(result.headers.get("access-control-allow-origin"),"*");
   assert.equal(body.merchant.name,"Tenant");
   assert.equal(body.offerings[0].goods[0].sha256,"b".repeat(64));
-  assert.ok(!/bankToken|Income:Private|internal\\/|"key"/u.test(JSON.stringify(body)));
+  assert.ok(!/bankToken|Income:Private|internal\/|"key"/u.test(JSON.stringify(body)));
+});
+
+test("human Shop and public agent catalog share sellable-first selection with honest checkout readiness", async () => {
+  const seller = {
+    merchant: { name: "Seller", legalBody: "seller", privateKey: "keep-private" },
+    offerings: [
+      { id: "future", title: "Future Book", line: "education", status: "coming-soon" },
+      { id: "live-one", title: "Live One", line: "education", status: "live",
+        priceCents: 300, currency: "usd", release: "live-one" },
+      { id: "external", title: "Outside Seller", line: "outside",
+        status: "external", externalUrl: "https://seller.example/offer" },
+      { id: "live-two", title: "Live Two", line: "education", status: "live",
+        priceCents: 500, currency: "usd", release: "live-two" },
+      { id: "preview", title: "Preview", line: "education", status: "test-only",
+        priceCents: 100, currency: "usd", release: "preview" },
+    ],
+  };
+  const sourceOrder = seller.offerings.map(({ id }) => id);
+  const runtime = createDigitalGoodsStorefrontWorker({ catalog: seller,
+    origin: "https://seller.example", buyerActor: "urn:ame:seller" });
+  const store = memoryFulfillment();
+  const full = env(store);
+  const ready = await (await runtime.fetch(new Request("https://seller.example/catalog.json"), full)).json();
+  assert.deepEqual(ready.offerings.map(({ id }) => id),
+    ["live-one", "live-two", "external", "preview", "future"]);
+  assert.deepEqual(ready.offerings.filter(({ buyable }) => buyable).map(({ id }) => id),
+    ["live-one", "live-two", "preview"]);
+  const home = await (await runtime.fetch(new Request("https://seller.example/"), full)).text();
+  assert.ok(home.indexOf('href="/goods/live-one"') >= 0);
+  assert.ok(home.indexOf('href="/goods/future"') > home.indexOf('href="/goods/live-one"'));
+
+  const offline = env(store, { STRIPE_CUSTOMER_CONTRACT_TOKEN: undefined });
+  const closed = await (await runtime.fetch(new Request("https://seller.example/catalog.json"), offline)).json();
+  assert.deepEqual(closed.offerings.map(({ id }) => id),
+    ["external", "live-one", "live-two", "preview", "future"]);
+  assert.equal(closed.offerings.some(({ buyable }) => buyable), false);
+  assert.equal(closed.offerings.find(({ id }) => id === "future").status, "coming-soon");
+  assert.ok(!JSON.stringify(closed).includes("keep-private"));
+  const closedHome = await (await runtime.fetch(new Request("https://seller.example/"), offline)).text();
+  assert.ok(closedHome.indexOf('href="/goods/external"') >= 0);
+  assert.ok(closedHome.indexOf('href="/goods/live-one"') > closedHome.indexOf('href="/goods/external"'));
+  assert.deepEqual(seller.offerings.map(({ id }) => id), sourceOrder);
 });
 
 test("generic Shop catalog serves browser Bazaar readers while refusing write methods", async () => {
@@ -335,4 +379,80 @@ test("generic Shop catalog serves browser Bazaar readers while refusing write me
   assert.equal(denied.status,405);
   assert.equal(denied.headers.get("allow"),"GET, HEAD, OPTIONS");
   assert.equal(original.offerings[0].line,"Income:Private");
+});
+
+test("merchant release state and checkout readiness remain separate in agent-facing public catalog", async () => {
+  const seller = {
+    merchant: { name: "Independent Shop", legalBody: "independent", privateKey: "not-public" },
+    offerings: [{ id: "ready-good", title: "Ready Good", line: "Income:Private",
+      status: "live", priceCents: 250, currency: "usd", release: "ready-good" }],
+  };
+  assert.throws(() => createPublicShopCatalog(seller, { checkoutArmed: "yes" }), TypeError);
+  const unreadied = createPublicShopCatalog(seller);
+  const ready = createPublicShopCatalog(seller, { checkoutArmed: true });
+  assert.equal(unreadied.readout.offerings[0].status, "live");
+  assert.equal(unreadied.readout.offerings[0].buyable, false);
+  assert.equal(ready.readout.offerings[0].status, "live");
+  assert.equal(ready.readout.offerings[0].buyable, true);
+  assert.equal(ready.readout.offerings[0].release, "ready-good");
+  assert.equal(JSON.stringify(ready.readout).includes("Income:Private"), false);
+  assert.equal(JSON.stringify(ready.readout).includes("not-public"), false);
+  const unavailable = createPublicShopCatalog({
+    ...seller, offerings: seller.offerings.map((entry) => ({ ...entry, status: "coming-soon" })),
+  }, { checkoutArmed: true });
+  assert.equal(unavailable.readout.offerings[0].status, "coming-soon");
+  assert.equal(unavailable.readout.offerings[0].buyable, false);
+});
+
+test("generic Shop fetch responds to current actual card bindings without changing publication status", async () => {
+  const store = memoryFulfillment();
+  const runtime = createDigitalGoodsStorefrontWorker({
+    catalog, origin: "https://bindinggenerations.net", buyerActor: "urn:ame:test-buyer",
+  });
+  const url = "https://bindinggenerations.net/catalog.json";
+  const usable = await runtime.fetch(new Request(url), env(store));
+  assert.equal(usable.status, 200);
+  assert.equal(usable.headers.get("access-control-allow-origin"), "*");
+  const enabled = await usable.json();
+  assert.equal(enabled.offerings[0].status, "test-only");
+  assert.equal(enabled.offerings[0].buyable, true);
+
+  const disabled = await (await runtime.fetch(new Request(url), env(store, {
+    STRIPE_CUSTOMER_CONTRACT_TOKEN: undefined,
+  }))).json();
+  assert.equal(disabled.offerings[0].status, "test-only");
+  assert.equal(disabled.offerings[0].buyable, false);
+  const restored = await (await runtime.fetch(new Request(url), env(store))).json();
+  assert.equal(restored.offerings[0].buyable, true, "the previous unarmed request cannot poison the shared cache");
+  assert.equal(await (await runtime.fetch(new Request(url, { method: "HEAD" }), env(store))).text(), "");
+  assert.equal((await runtime.fetch(new Request(url, { method: "POST" }), env(store))).status, 405);
+});
+
+
+test('mountable Shop exposes the shared MCP without creating another merchant catalog', async () => {
+  const store = memoryFulfillment();
+  const runtime = createDigitalGoodsStorefrontWorker({
+    catalog, origin: 'https://bindinggenerations.net', buyerActor: 'urn:ame:test-buyer',
+    routes: { goods: '/publications/' },
+  });
+  const shopUrl = 'https://bindinggenerations.net';
+  const publicData = await (await runtime.fetch(new Request(shopUrl + '/catalog.json'), env(store))).json();
+  const message = { jsonrpc: '2.0', id: 1, method: 'tools/call',
+    params: { name: 'get_product', arguments: { id: 'test-book' } } };
+  const call = await runtime.fetch(new Request(shopUrl + '/mcp', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(message),
+  }), env(store));
+  assert.equal(call.status, 200);
+  const product = (await call.json()).result.structuredContent;
+  assert.equal(product.id, publicData.offerings[0].id);
+  assert.equal(product.buyable, publicData.offerings[0].buyable);
+  assert.equal(product.url, shopUrl + '/publications/test-book');
+  assert.equal(product.goods[0].sha256, publicData.offerings[0].goods[0].sha256);
+  assert.equal(Object.hasOwn(product.goods[0], 'key'), false);
+  assert.equal((await runtime.fetch(new Request(shopUrl + '/mcp'), env(store))).status, 405);
+});
+
+test("original native storefront runtime advertises signed outside-catalog audit explicitly",()=>{
+ assert.equal(SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT,true);
 });

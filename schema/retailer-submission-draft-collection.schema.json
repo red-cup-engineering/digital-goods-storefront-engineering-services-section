@@ -428,6 +428,20 @@
             "properties": {
               "submissionBlockers": {
                 "maxItems": 0
+              },
+              "proposedSubmissionFields": {
+                "properties": {
+                  "author": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "publisher": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                }
               }
             }
           }

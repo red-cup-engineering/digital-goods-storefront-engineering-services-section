@@ -180,7 +180,7 @@ test("original retailer producer reads a selected catalog and writes byte-pinned
           coverFile: "books/test/cover.png", subjects: [],
           edition: { record: "editions/test-acceptance.json", acceptedAt: "2026-09-27T00:00:00Z",
             digest: "ni:///sha-256;" + "a".repeat(43),
-            files: [{ format: "EPUB", path: "books/test/test.epub", sha256: "b".repeat(64) }] },
+            files: [{ format: "EPUB", path: "books/test/test.epub", sha256: "b".repeat(64), bytes: 1024 }] },
         },
       }],
     };

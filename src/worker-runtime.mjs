@@ -3,18 +3,33 @@ import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, re
 import { tuftePage, tufteRedirect } from "@red-cup-engineering/web-page-tiling-engine/application";
 import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/storefront";
 import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
-import { catalogModel, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
+import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
+import { readSubscriptionOrderBinding, subscriptionBuyerPrincipal, subscriptionOrderRefusal } from "./subscription-order.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
+export { SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
 import { REVIEW_COPY_ID, admitReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
-import { displayPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
+import { displayPrice, displayOfferingPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
 
 /** Independently reusable public Shop HTTP catalog, safe for cross-origin Bazaar readers.
  * Only source-qualified merchant product fields are exposed; payment, wallet
  * and internal storage authority remain on the original merchant runtime. */
-export function createPublicShopCatalog(catalog) {
-  const readout = publicCatalog(catalog);
+export function createPublicShopCatalog(catalog, { checkoutArmed = false, recurringCheckoutArmed = false } = {}) {
+  if (typeof checkoutArmed !== "boolean") throw new TypeError("checkoutArmed must be Boolean");
+  if (typeof recurringCheckoutArmed !== "boolean") throw new TypeError("recurringCheckoutArmed must be Boolean");
+  // Source release state and the currently armed purchasing action are
+  // different. Reuse the human storefront's existing purchase affordance,
+  // retaining the original privacy-filtered merchant and product contracts.
+  const original = publicCatalog(catalog);
+  const ranked = prioritizeStorefrontOfferings(catalogModel(catalog, { checkoutArmed, recurringCheckoutArmed }).offerings);
+  const sourcePublicOfferings = new Map(original.offerings.map((offering) => [offering.id, offering]));
+  const readout = {
+    ...original,
+    offerings: ranked.map(({ id, buyable }) => ({
+      ...sourcePublicOfferings.get(id), buyable,
+    })),
+  };
   const body = JSON.stringify(readout);
   const headers = {
     "content-type": "application/json; charset=utf-8",
@@ -91,20 +106,42 @@ function admitted(result) {
  * @returns {{fetch: (request: Request, env: object) => Promise<Response>, catalog: object}}
  */
 export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor, routes = {}, tokenTtlSeconds = 3600, storefront = {} }) {
-  const publicBuyerCatalog = createPublicShopCatalog(catalog);
+  const publicBuyerCatalogs = new Map();
   if (!validOrigin(origin)) throw new TypeError("origin must be a canonical https origin");
   if (typeof buyerActor !== "string" || buyerActor.length === 0) throw new TypeError("buyerActor is required");
-  const path = { catalog: "/", goods: "/goods/", checkout: "/checkout/", webhook: "/webhooks/stripe", thanks: "/thanks", download: "/download/", library: "/library", gifts: "/gifts", giftApi: "/api/gifts", reviewCopies: "/review-copies", reviewCopyApi: "/api/review-copies", signIn: "/oauth/login", callback: "/oauth/callback", signOut: "/oauth/logout", ...routes };
+  const path = { catalog: "/", goods: "/goods/", checkout: "/checkout/", webhook: "/webhooks/stripe", thanks: "/thanks", download: "/download/", library: "/library", gifts: "/gifts", giftApi: "/api/gifts", reviewCopies: "/review-copies", reviewCopyApi: "/api/review-copies", mcp: "/mcp", signIn: "/oauth/login", callback: "/oauth/callback", signOut: "/oauth/logout", ...routes };
   const railCatalog = stripeCatalog(catalog);
   const offering = (id) => catalog.offerings.find((candidate) => candidate.id === id);
   const title = storefront.title ?? catalog.merchant?.name ?? "Storefront";
-  const armed = (env) => { const state = readiness({ env, catalog: railCatalog }); return supportsStore(env.fulfillment) && env.goods && typeof env.goods.get === "function" && env.audit && typeof env.audit.record === "function" && typeof env.tokenSecret === "string" && env.tokenSecret.length > 0 && state.credential.present && state.webhookSecretPresent && state.customerContractTokenPresent; };
+  const armed = (env) => { const state = readiness({ env, catalog: railCatalog }); return Boolean(supportsStore(env.fulfillment) && env.goods && typeof env.goods.get === "function" && env.audit && typeof env.audit.record === "function" && typeof env.tokenSecret === "string" && env.tokenSecret.length > 0 && state.credential.present && state.webhookSecretPresent && state.customerContractTokenPresent); };
+  // Cache immutable bytes for the two capability states, never a Response.
+  // The deployment's current Stripe/fulfillment bindings choose the state
+  // at request time: a source-live book is not necessarily purchase-ready.
+  const publicBuyerCatalogFor = (env) => {
+    const checkoutArmed = armed(env ?? {});
+    const recurringCheckoutArmed = recurringArmed(env ?? {}), key = `${checkoutArmed}:${recurringCheckoutArmed}`;
+    if (!publicBuyerCatalogs.has(key)) {
+      publicBuyerCatalogs.set(key, createPublicShopCatalog(catalog, { checkoutArmed, recurringCheckoutArmed }));
+    }
+    return publicBuyerCatalogs.get(key);
+  };
+
+  // Loading agent transport must not make ordinary human Shop pages depend
+  // on parsing protocol machinery when no MCP caller is present.
+  let shopMcp;
+  const shopMcpWhenRequested = () => (shopMcp ??= import("./shop-mcp.mjs").then(
+    ({ createShopMcpEndpoint }) => createShopMcpEndpoint({
+      origin, goodsPath: path.goods, sellerName: catalog.merchant.name, path: path.mcp,
+      readPublicCatalog: ({ env }) => publicBuyerCatalogFor(env).readout,
+    })));
 
   // Any verified Google account may sign in: an account here is a reader's
   // email, not admission to anything private.
   const signIn = (env) => ({ ...(env.accounts ?? {}), publicBaseUrl: origin, callbackPath: path.callback, admitEmail: () => true, sessionCookie: "storefront_session", transactionCookie: "storefront_sign_in" });
   const signInOpen = (env) => resolveGoogleSettings(signIn(env)).configured && supportsAccounts(env.fulfillment);
   const readerOf = (request, env) => (signInOpen(env) ? identifyGoogle(signIn(env), request) : null);
+  const recurringArmed = env => Boolean(armed(env) && signInOpen(env) && env.audit === env.fulfillment?.audit
+    && typeof env.audit?.query === "function");
   const giftersOf = (env) => new Set((env.gifters ?? []).map(accountOf).filter(Boolean));
   const gifter = (reader, env) => Boolean(reader) && giftersOf(env).has(accountOf(reader.email));
 
@@ -135,9 +172,10 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const actions = [];
     if (owned.has(item.id)) actions.push({ kind: "link", label: "In your library", href: path.library });
     if (PAID.has(item.status)) {
-      if (item.buyable) actions.push({ kind: "form", form: { action: `${path.checkout}${item.id}`, method: "post", submitters: [{ label: `Buy — ${displayPrice(item.priceCents, item.currency)}` }] } });
+      if (item.buyable) actions.push({ kind: "form", form: { action: `${path.checkout}${item.id}`, method: "post", submitters: [{ label: `${item.mode === "subscription" ? "Subscribe" : "Buy"} — ${displayOfferingPrice(item)}` }] } });
       else actions.push({ kind: "unavailable", label: "Card checkout opens soon", reason: "card payments are not connected yet" });
-      if (item.agentOfferUrl) actions.push({ kind: "link", label: "Buy with USDC over x402", href: item.agentOfferUrl });
+      // A catalog link is not proof that the remote seller can actually settle.
+      if (item.agentOfferUrl) actions.push({ kind: "link", label: "Explore x402 offer", href: item.agentOfferUrl });
     } else if (item.status === "external") actions.push({ kind: "link", label: item.state[0].toUpperCase() + item.state.slice(1), href: item.externalUrl });
     else if (item.status === "coming-soon") actions.push({ kind: "unavailable", label: "Coming soon" });
     if (giving && item.release) actions.push({ kind: "link", label: "Give this book", href: `${path.gifts}?offering=${encodeURIComponent(item.id)}` });
@@ -148,7 +186,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const { env, reader } = context.capabilities;
     const owned = new Set(reader && supportsAccounts(env.fulfillment) ? (await env.fulfillment.listAccount(reader.email)).filter((entry) => entry.status === "active").map((entry) => entry.offeringId) : []);
     const giving = gifter(reader, env);
-    const items = catalogModel(catalog, { checkoutArmed: armed(env) }).offerings.map((item) => {
+    const items = prioritizeStorefrontOfferings(catalogModel(catalog, { checkoutArmed: armed(env), recurringCheckoutArmed: recurringArmed(env) }).offerings).map((item) => {
       const href = `${path.goods}${item.id}`;
       return { ...storefrontItemFor(item, { actions: actionsFor(item, { env, owned, giving }), cover: item.cover ?? undefined }), metadata: {
         canonical: `${origin}${href}`, type: item.book ? "book" : "product", siteName: title,
@@ -164,6 +202,16 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     const { env, reader } = context.capabilities;
     const id = context.params.id; const item = offering(id);
     if (!item || !PAID.has(item.status)) return message(context, "Not found", "No such offering.", 404);
+    const buyerPrincipal = reader?.provider === "google" ? subscriptionBuyerPrincipal({
+      issuer: "https://accounts.google.com", subject: reader.subject }) : null;
+    if (item.mode === "subscription") {
+      if (!buyerPrincipal || !accountOf(reader.email)) return message(context, "Sign in first", "Sign in to associate this subscription with your account.", 401);
+      if (!env.audit || env.audit !== env.fulfillment?.audit || typeof env.audit.query !== "function")
+        return message(context, "Checkout unavailable", "The subscription's order records are unavailable. Please try again later.", 503);
+      // Refuse damaged prior custody before creating a provider session.
+      try { await env.audit.query({ category: "stripe-checkout-session-creation.receipts", strict: true }); }
+      catch { return message(context, "Checkout unavailable", "The subscription's order records are unavailable. Please try again later.", 503); }
+    }
     if (!armed(env)) return message(context, "Not available yet", "Card checkout for this book opens once the shop's card payments are connected.", 409);
     let admittedRelease;
     if (item.release) {
@@ -176,7 +224,9 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     if (offered.type !== "Offer") return message(context, "Checkout unavailable", "This book isn't available to buy yet.", 409);
     const accepted = await invokeCheckout({ "@context": solicitation["@context"], id: `${solicitation.id}:accept`, type: "Accept", actor: buyerActor, target: solicitation.target, object: { offer: offered } }, { env, catalog: railCatalog, store: env.audit });
     if (accepted.type !== "Accept") return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 502);
-    const registration = await env.fulfillment.recordCheckout({ sessionId: accepted.object.stripeSessionId, offeringId: id, requestDigest: accepted.object.requestDigest, amountTotal: item.priceCents, currency: item.currency, stripeMode: accepted.object.stripeMode, goods: item.goods, release: item.release ?? null, admittedRelease: admittedRelease ?? null, account: reader ? accountOf(reader.email) : null, status: "open" });
+    const registration = await env.fulfillment.recordCheckout({ sessionId: accepted.object.stripeSessionId, offeringId: id, requestDigest: accepted.object.requestDigest, amountTotal: item.priceCents, currency: item.currency, stripeMode: accepted.object.stripeMode, goods: item.goods, release: item.release ?? null, admittedRelease: admittedRelease ?? null, account: reader ? accountOf(reader.email) : null, status: "open",
+      ...(item.mode === "subscription" ? { mode: "subscription", buyerActor, buyerPrincipal,
+        request: structuredClone(offered.object.request), offering: structuredClone(offered.object.offering) } : {}) });
     if (!registration || registration.failed || !["registered", "duplicate"].includes(registration.disposition)) return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 503);
     return Response.redirect(accepted.object.checkoutUrl, 303);
   }
@@ -195,6 +245,14 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
   async function thanks(context) {
     const { env, reader } = context.capabilities;
     const sessionId = context.url.searchParams.get("session_id");
+    if (sessionId && supportsStore(env.fulfillment) && catalog.offerings.some(item => item.mode === "subscription")) {
+      const order = await env.fulfillment.getCheckout(sessionId);
+      if (order?.mode === "subscription") {
+        if (!reader || order.account !== accountOf(reader.email) || order.buyerActor !== buyerActor)
+          return message(context, "Purchase not found", "We can't find a completed purchase for this link.", 404);
+        return message(context, "Subscription order", "Your order is recorded. Payment and access are confirmed separately by the service described in your subscription contract.");
+      }
+    }
     const entitlement = sessionId && supportsStore(env.fulfillment) ? await env.fulfillment.getEntitlement(sessionId) : null;
     if (!entitlement || entitlement.status !== "active") return message(context, "Purchase not found", "We can't find a completed purchase for this link.", 404);
     if (!env.tokenSecret) return message(context, "Unavailable", "Delivery is unavailable.", 503);
@@ -466,12 +524,30 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     ],
   });
 
-  return { catalog, async fetch(request, env) {
+  return { catalog,
+    async readSubscriptionOrder(request, selection, env) {
+      const reader = readerOf(request, env);
+      return readSubscriptionOrderBinding(selection, { account: reader ? accountOf(reader.email) : null,
+        buyerActor, catalog, fulfillment: env.fulfillment, audit: env.audit });
+    },
+    /** Server capability for a cooperating host's original verified Google
+     * identity. This is deliberately not a public HTTP route or a token mint.
+     * The host must obtain identity from its provider, never a request body. */
+    async readSubscriptionOrderForPrincipal(identity, selection, env) {
+      const buyerPrincipal = subscriptionBuyerPrincipal(identity), account = accountOf(identity?.email);
+      if (!buyerPrincipal || identity.emailVerified !== true || !account || identity.email.length > 320)
+        return subscriptionOrderRefusal("verified-google-principal-required");
+      return readSubscriptionOrderBinding(selection, { account, buyerActor, buyerPrincipal,
+        catalog, fulfillment: env.fulfillment, audit: env.audit });
+    },
+    async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/catalog.json") return publicBuyerCatalog.fetch(request);
+    if (url.pathname === "/catalog.json") return publicBuyerCatalogFor(env).fetch(request);
+    if (url.pathname === path.mcp) return (await shopMcpWhenRequested()).handler({ request, env });
     // Stripe posts without a browser origin, so its webhook stands outside the
     // storefront application's same-origin action guard.
-    if (request.method === "POST" && url.pathname === path.webhook) return fulfillStripeCheckoutWebhook(request, env);
+    if (request.method === "POST" && url.pathname === path.webhook) return fulfillStripeCheckoutWebhook(request,
+      { ...env, recurringCheckout: catalog.offerings.some(item => item.mode === "subscription" && PAID.has(item.status)) });
     // A download is bytes for any client, never an HTML-or-JSON page.
     if (request.method === "GET" && url.pathname.startsWith(path.download)) return download(url.pathname.slice(path.download.length), env);
     // The gift API answers a house agent in JSON, outside the browser application.

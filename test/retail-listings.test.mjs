@@ -22,9 +22,12 @@ test("KDP refuses a title naming another's mark, keeps companions to the US, dro
   assert.deepEqual(kdp.fields.keywords, ["data analytics", "SQL"]);
   assert.equal(kdp.fields.royalty, "70%");
   assert.match(kdp.fields.kdpSelect, /^No/);
-  const other = retailListingFor(companion, "kobo");
-  assert.equal(other.blocks.length, 1);
-  assert.match(other.blocks[0], /Kobo rejects books/u);
+  const other = retailListingFor(companion, "google-play-books");
+  assert.equal(other.blocks.length, 0);
+  assert.match(other.attention[0], /independence statement/);
+  const refused = retailListingFor(companion, "kobo");
+  assert.equal(refused.blocks.length, 1);
+  assert.match(refused.blocks[0], /Kobo rejects books/u);
 });
 
 test("the description carries an independence statement exactly when a book names others' marks", () => {
