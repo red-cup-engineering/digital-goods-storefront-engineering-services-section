@@ -46,6 +46,54 @@ language-name field consume that same book source. The conversion does not
 translate the book, establish an external retailer listing, enable card
 checkout, or qualify for Google's distinct Book Actions data-feed program.
 
+## Retailer submission drafts: one selected source contract
+
+The original package exports `./retail-submission-drafts` (the
+`src/retail-submission-drafts.mjs` producer) and
+`./retail-submission-schema` (the **single** canonical
+`schema/retailer-submission-draft-collection.schema.json`, JSON Schema
+Draft 2020-12). The package's `files` selection includes this `schema/`
+directory. A historical second `data/schemas/` schema was neither selected by
+the writer nor packaged for Kindle; it also disagreed about nullable publisher
+and author fields and lacked the explicit edition-acceptance claim. Its source
+history is retained in Git, **not** as a competing v2 admission rule.
+
+The original Causeway Shop compiled book source is read and hashed under
+`sourceCatalog`; the Red Cup writer produces `bookSubmissionDrafts` whose
+`sourceEditionAcceptanceClaim` is either typed acceptance-source coordinates
+or explicit `null`. `proposedSubmissionFields.author` and
+`proposedSubmissionFields.publisher` may also be `null` when the original
+catalog provides no such authority; the canonical retailer projection must
+then emit blockers, never silently substitute the seller's name. The original
+Kindle Publishing `selectRetailerSubmissionCandidate` consumes the **exported
+canonical schema**, and separately checks the selected compiled source digest,
+blockers, and its own channel support. The human retailer guide is another
+projection of the same writer, not a second record of accepted publication.
+
+Use `generateRetailerSubmissionDrafts` for generation and
+`createRetailerSubmissionDraftCollection` for collection construction. The old
+`deriveRetailListings` and `retailerSubmissionDraftResource` names remain exact
+compatibility aliases; `renderRetailListings` retains its existing signature. The script at
+`scripts/derive-retail-listings.mjs` is a CLI adapter and re-exports them for
+existing direct consumers. Each generation loads the compiled module under
+its source digest; a second generation in the same process therefore reads
+changed source data. If the module bytes change while loading, generation
+fails before replacing either output. This digest identifies the selected
+module, not any independently imported modules or publication authority.
+
+The canonical schema permits unknown author and publisher values only in
+blocked drafts. A proposed candidate requires nonempty source-defined values
+for both fields, even if someone removes the recorded blockers.
+
+This is local typed JSON with content-addressed `ni:///sha-256` references
+and BCP 47 language identities. Shop's public books use schema.org Book/Offer;
+Kindle's independent interchange surfaces are ONIX/OPDS where applicable.
+A retailer **form proposal** must not be mislabeled an ONIX notice, a legal
+rights declaration, a performed submission, or a public-sale receipt.
+Source/package/CI qualification, installed Shop derivation, selected Kindle
+readback, human publisher review, remote submission and customer receipt
+remain separate conditions of receiving.
+
 ## What lives here
 
 - `src/digital-goods-storefront.mjs` — pure domain semantics, Web Crypto
@@ -207,7 +255,7 @@ This source's narrow `externalPaymentLinks` receiving option admits only bounded
 
 The original `DigitalGoodsFulfillment` `/audit` now receives immutable same-ID economic facts transactionally: retries of the same source event report `duplicate:true` and keep the first stored receipt; an incompatible same-ID record refuses with 409 instead of replacing signed financial history. The returned `SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT` export is surfaced by the actual `./worker-runtime` package entry, so Shop can distinguish installed support from a source-only Git branch. This is an observation, not a subscription, paid invoice, refund, royalty, payout or treasury settlement.
 
-The existing native `test/stripe-checkout-fulfillment.test.mjs` and `test/durable-fulfillment.test.mjs` own positive and adverse signed-wire/durable-receiving checks and are listed as mandatory `receivingTests` in the original npm carrier. **The manifest remains at version 0.4.4**; a real versioned immutable registry release and dependent Shop installation must be separately observed. The existing live Stripe webhook is configured only for `checkout.session.completed`, so invoices and recurring renewals require their own authorized event-scope and receipt service; no source edit silently changes that provider setting.
+The existing native `test/stripe-checkout-fulfillment.test.mjs` and `test/durable-fulfillment.test.mjs` own positive and adverse signed-wire/durable-receiving checks and are listed as mandatory `receivingTests` in the original npm carrier. These tests were initially added at version 0.4.4; the current version is declared in `package.json`. A versioned registry release and dependent Shop installation must be separately observed. The existing live Stripe webhook is configured only for `checkout.session.completed`, so invoices and recurring renewals require their own authorized event-scope and receipt service; no source edit silently changes that provider setting.
 
 ## Five-custody thread
 

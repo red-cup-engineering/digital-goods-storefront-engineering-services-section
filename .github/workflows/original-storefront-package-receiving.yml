@@ -26,7 +26,7 @@ jobs:
       - name: Run original source check and all mandatory receiving suites
         run: |
           npm run check
-          node --test test/stripe-checkout-fulfillment.test.mjs test/durable-fulfillment.test.mjs test/worker-runtime.test.mjs test/recurring-order.test.mjs
+          node --test test/stripe-checkout-fulfillment.test.mjs test/durable-fulfillment.test.mjs test/worker-runtime.test.mjs test/recurring-order.test.mjs test/retail-listings.test.mjs test/retail-submission-drafts.test.mjs
       - name: Verify source capability and immutable carrier candidate without publishing
         run: |
           node --input-type=module <<'NODE'
@@ -50,8 +50,10 @@ jobs:
             'test/durable-fulfillment.test.mjs', 'test/worker-runtime.test.mjs',
             'src/subscription-order.mjs', 'test/recurring-order.test.mjs',
             'docs/RECURRING-ORDER-CUSTODY.md',
+            'src/retail-submission-drafts.mjs', 'schema/retailer-submission-draft-collection.schema.json',
+            'test/retail-listings.test.mjs', 'test/retail-submission-drafts.test.mjs',
           ]) assert.ok(files.has(path), 'unpacked carrier lacks ' + path);
           console.log(JSON.stringify({packageName:packs[0].name, declaredVersion:packs[0].version,
-            candidateSha512:packs[0].integrity, containedRequiredFiles:9,
+            candidateSha512:packs[0].integrity, containedRequiredFiles:13,
             publication:'not-attempted', installedByShop:'not-observed'},null,2));
           NODE

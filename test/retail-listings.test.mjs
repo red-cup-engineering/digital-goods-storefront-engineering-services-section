@@ -3,11 +3,11 @@ import test from "node:test";
 
 import { aiDisclosureFor, AUDIOBOOK_RETAIL_CHANNELS, RETAIL_CHANNELS, retailDescription, retailListingFor, retailListings } from "../src/retail-listings.mjs";
 
-const edition = { digest: "ni:///sha-256;x", proof: { errors: 1, corrections: 2, notes: 3 }, files: [{ format: "EPUB", bytes: 10, sha256: "a".repeat(64), path: "section/dist/book.epub" }] };
+const edition = { digest: "ni:///sha-256;x", record: "editions/accepted.json", acceptedAt: "2026-09-27T00:00:00Z", proof: { errors: 1, corrections: 2, notes: 3 }, files: [{ format: "EPUB", bytes: 10, sha256: "a".repeat(64), path: "section/dist/book.epub" }] };
 const companion = {
   id: "companion", title: "Analysis, Course by Course", subtitle: "An Independent Study Companion to the Google Data Analytics Certificate",
   priceCents: 900, currency: "usd", cover: "/covers/companion.png", blurb: "A study companion.", keywords: ["data analytics", "Google certificate", "SQL"],
-  book: { profile: "study-guide", marks: ["Google", "Coursera"], subjects: ["COM021030"], coverFile: "section/dist/companion-cover.png", edition },
+  book: { author: "Example Author", publisher: "Example Publisher", profile: "study-guide", marks: ["Google", "Coursera"], subjects: ["COM021030"], coverFile: "section/dist/companion-cover.png", edition },
 };
 const handbook = {
   id: "handbook", title: "A Handbook", priceCents: 2900, currency: "usd", blurb: "A field guide.", keywords: ["agents"],
@@ -25,6 +25,9 @@ test("KDP refuses a title naming another's mark, keeps companions to the US, dro
   const other = retailListingFor(companion, "google-play-books");
   assert.equal(other.blocks.length, 0);
   assert.match(other.attention[0], /independence statement/);
+  const refused = retailListingFor(companion, "kobo");
+  assert.equal(refused.blocks.length, 1);
+  assert.match(refused.blocks[0], /Kobo rejects books/u);
 });
 
 test("the description carries an independence statement exactly when a book names others' marks", () => {
@@ -77,4 +80,38 @@ test("all retail channel fields derive the same source book language as product 
   assert.equal(spanishRetail.fields.language,new Intl.DisplayNames(["en"],{type:"language"}).of("es-MX"));
   assert.notEqual(spanishRetail.fields.language,"English");
   assert.equal(retailListingFor(companion,"google-play-books").fields.language,"English");
+});
+
+// A compiled catalog may retain built files without any accepted edition.
+// A channel form draft must not turn those bytes into a publication receipt.
+test("historical files without accepted edition remain blocked on every retailer", () => {
+  for (const channel of RETAIL_CHANNELS) {
+    const out = retailListingFor(handbook, channel);
+    assert.ok(out.blocks.some(block => /No accepted, revision-identified EbookEditionAcceptance/u.test(block)), channel);
+  }
+  const unknown = { ...companion, book: { ...companion.book, edition: { ...companion.book.edition, record: undefined } } };
+  assert.match(retailListingFor(unknown, "kdp").blocks.join(" "), /No accepted/u);
+});
+
+test("retailer-specific USD source does not invent prices for unsupported currency or missing cents", () => {
+  for (const changed of [
+    { ...companion, currency: "eur" },
+    { ...companion, priceCents: undefined },
+    { ...companion, priceCents: 900.5 },
+    { ...companion, priceCents: -1 },
+  ]) assert.throws(() => retailListingFor(changed, "kdp"), /source-qualified USD price/u);
+});
+
+test("the original publisher/author source is required; shop merchant identity never fabricates it", () => {
+  const source = { ...companion, book: { ...companion.book, author: undefined, publisher: undefined } };
+  for (const channel of RETAIL_CHANNELS) {
+    const result = retailListingFor(source, channel);
+    assert.equal(result.fields.author, null);
+    assert.equal(result.fields.publisher, null);
+    assert.ok(result.blocks.some(block => /No source-defined author/u.test(block)), channel);
+    assert.ok(result.blocks.some(block => /No source-defined publisher/u.test(block)), channel);
+  }
+  const apple = retailListingFor(source, "apple-books");
+  assert.ok(apple.fields.contributors.every(entry => !/Author: null|Author: undefined/u.test(entry)));
+  assert.equal(apple.fields.contributors.some(entry => entry.startsWith("Author:")), false);
 });
