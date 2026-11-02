@@ -5,7 +5,7 @@
  * receives the actions its receiver has already decided (buy, download, gift,
  * or an honest refusal).
  */
-import { htmlElement as element } from "@red-cup-engineering/web-page-tiling-engine/composition";
+import { htmlElement as element } from "@red-cup-engineering/tufte/composition";
 
 import { aiDisclosureFor } from "./retail-listings.mjs";
 import { bookLanguageTag } from "./digital-goods-storefront.mjs";

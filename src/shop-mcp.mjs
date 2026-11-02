@@ -1,7 +1,7 @@
 /** Read-only Shop discovery through the existing MCP transport.
  * This never pays, edits catalog records, or grants merchant authority. */
 import { mcpResource } from '@red-cup-engineering/mcp-engineering-services-section/http';
-import { filterStorefrontItems } from '@red-cup-engineering/web-page-tiling-engine/storefront';
+import { filterStorefrontItems } from '@red-cup-engineering/tufte/storefront';
 
 const MAX_RESULTS = 40;
 const MAX_OFFSET = 10_000;

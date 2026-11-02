@@ -13,8 +13,8 @@ import {
   verifyDownloadToken,
 } from "../src/digital-goods-storefront.mjs";
 import { displayPrice, storefrontItemFor, structuredDataFor } from "../src/storefront-presentation.mjs";
-import { renderTufteDocument } from "@red-cup-engineering/web-page-tiling-engine/rendering";
-import { storefrontCatalogModel, storefrontDetailModel } from "@red-cup-engineering/web-page-tiling-engine/storefront";
+import { renderTufteDocument } from "@red-cup-engineering/tufte/rendering";
+import { storefrontCatalogModel, storefrontDetailModel } from "@red-cup-engineering/tufte/storefront";
 
 const GOOD = { name: "EPUB", key: "handbook.epub", contentType: "application/epub+zip", byteLength: 1024, sha256: "a".repeat(64) };
 

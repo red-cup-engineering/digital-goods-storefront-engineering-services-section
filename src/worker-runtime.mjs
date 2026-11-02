@@ -1,8 +1,8 @@
 import { ACTOR as STRIPE_ACTOR, invokeCheckout, readiness, solicitCheckout } from "@red-cup-engineering/stripe-services-section";
 import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, resolveGoogleSettings } from "@red-cup-engineering/computer-web-server/admission/google";
-import { tuftePage, tufteRedirect } from "@red-cup-engineering/web-page-tiling-engine/application";
-import { storefrontItemTile } from "@red-cup-engineering/web-page-tiling-engine/storefront";
-import { createTufteStorefront } from "@red-cup-engineering/web-page-tiling-engine/storefront/application";
+import { tuftePage, tufteRedirect } from "@red-cup-engineering/tufte/application";
+import { storefrontItemTile } from "@red-cup-engineering/tufte/storefront";
+import { createTufteStorefront } from "@red-cup-engineering/tufte/storefront/application";
 import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
 import { readSubscriptionOrderBinding, subscriptionBuyerPrincipal, subscriptionOrderRefusal } from "./subscription-order.mjs";

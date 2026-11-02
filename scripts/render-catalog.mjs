@@ -2,8 +2,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { renderTufteDocument } from "@red-cup-engineering/web-page-tiling-engine/rendering";
-import { STOREFRONT_STYLES, storefrontCatalogModel, storefrontDetailModel } from "@red-cup-engineering/web-page-tiling-engine/storefront";
+import { renderTufteDocument } from "@red-cup-engineering/tufte/rendering";
+import { STOREFRONT_STYLES, storefrontCatalogModel, storefrontDetailModel } from "@red-cup-engineering/tufte/storefront";
 
 import { catalogModel, validateCatalog } from "../src/digital-goods-storefront.mjs";
 import { storefrontFacets, storefrontItemFor } from "../src/storefront-presentation.mjs";
