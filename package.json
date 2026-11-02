@@ -45,7 +45,7 @@
     "@red-cup-engineering/javascript-node-services-section": "0.3.2",
     "@red-cup-engineering/stripe-services-section": "0.2.1",
     "@red-cup-engineering/computer-web-server": "0.6.2",
-    "@red-cup-engineering/tufte": "npm:@red-cup-engineering/web-page-tiling-engine@0.14.2",
+    "@red-cup-engineering/tufte": "0.21.0-dev.0",
     "@red-cup-engineering/mcp-engineering-services-section": "0.1.6",
     "@red-cup-engineering/json-schema-services-section": "0.5.0"
   },
