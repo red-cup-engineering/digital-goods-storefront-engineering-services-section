@@ -1,4 +1,4 @@
-# digital-goods-storefront-services-section
+# @red-cup-engineering/digital-goods-storefront-engineering-services-section
 
 <!-- 561-group-standards:badges:start -->
 [![Red Cup Engineering](https://img.shields.io/badge/561%20Group-Red%20Cup%20Engineering-c0392b)](https://github.com/red-cup-engineering)
@@ -6,6 +6,8 @@
 [![Indigenous data: CARE](https://img.shields.io/badge/Indigenous%20data-CARE-4b6f44)](https://github.com/red-cup-engineering/.github/blob/main/GOVERNANCE.md)
 [![Tips welcome](https://img.shields.io/badge/tips-welcome-d4a017)](https://github.com/561-group/.github/blob/main/TIPS.md)
 <!-- 561-group-standards:badges:end -->
+
+The house digital-goods storefront: checkout-model, delivery, and receipt semantics usable by every product line (ebooks, newsletters, cohort, merch, briefing). Composes the card rail (stripe-services-section) rather than re-implementing it; catalog validation, view-model shaping, TUFTE storefront presentation, reader accounts (Google sign-in), gifts, stamped review copies and a library per account, paid-release delivery, HMAC download tokens (Web Crypto only, Worker-safe), and plain-JSON receipts.
 
 The Group digital-goods storefront: checkout-model, delivery, and receipt
 semantics usable by every product line (ebooks, newsletters, cohort, merch,
