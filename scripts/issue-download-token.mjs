@@ -4,7 +4,7 @@
  * reading the signing secret from `DIGITAL_GOODS_DOWNLOAD_SECRET`.
  */
 import { issueDownloadToken } from "../src/digital-goods-storefront.mjs";
-import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-services-section/operation";
+import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-operation-engineering-services-section/operation";
 
 /**
  * Issues a download token using the secret from `env`.

@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 
 import { validateCatalog } from "../src/digital-goods-storefront.mjs";
-import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-services-section/operation";
+import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-operation-engineering-services-section/operation";
 
 /**
  * Reads and validates a catalog file from disk.
