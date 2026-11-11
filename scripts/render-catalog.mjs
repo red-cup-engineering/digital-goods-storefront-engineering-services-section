@@ -7,7 +7,7 @@ import { STOREFRONT_STYLES, storefrontCatalogModel, storefrontDetailModel } from
 
 import { catalogModel, validateCatalog } from "../src/digital-goods-storefront.mjs";
 import { storefrontFacets, storefrontItemFor } from "../src/storefront-presentation.mjs";
-import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-operation-engineering-services-section/operation";
+import { runJavascriptNodeOperation } from "@red-cup-engineering/node-js-function-engineering-services-section/operation";
 
 /**
  * Renders one catalog into `outDir`, refusing an invalid catalog outright.

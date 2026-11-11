@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { stripeOfferingFor, validateCatalog } from "../src/digital-goods-storefront.mjs";
-import { runJavascriptNodeOperation } from "@red-cup-engineering/javascript-node-operation-engineering-services-section/operation";
+import { runJavascriptNodeOperation } from "@red-cup-engineering/node-js-function-engineering-services-section/operation";
 
 /**
  * Derives the Stripe offerings shape from a catalog, refusing an invalid
