@@ -12,7 +12,7 @@ import { issueDownloadTokenFromEnv } from "../scripts/issue-download-token.mjs";
 import { verifyDownloadToken } from "../src/digital-goods-storefront.mjs";
 import { deriveRetailListings, retailerSubmissionDraftResource } from "../scripts/derive-retail-listings.mjs";
 import { retailListings } from "../src/retail-listings.mjs";
-import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
+import { validateJsonSchema } from "@red-cup-engineering/json-schema-engineering-services-section/validation";
 import schema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 
 const CATALOG = {

@@ -5,7 +5,7 @@ import { createDigitalGoodsStorefrontWorker } from '../src/worker-runtime.mjs';
 import { createDurableFulfillment, DigitalGoodsFulfillment } from '../src/durable-fulfillment.mjs';
 import { validateCatalog, stripeOfferingFor, publicCatalog } from '../src/digital-goods-storefront.mjs';
 import { createSessionCookie } from '@red-cup-engineering/computer-web-server/admission/session';
-import { digest, resolveSubscriptionAccess, SUBSCRIPTION_READ_API_VERSION } from '@red-cup-engineering/stripe-services-section';
+import { digest, resolveSubscriptionAccess, SUBSCRIPTION_READ_API_VERSION } from '@red-cup-engineering/stripe-engineering-services-section';
 
 const ACTOR = 'urn:fixture:original-shop-buyer';
 const ACCOUNT = 'reader@example.test';

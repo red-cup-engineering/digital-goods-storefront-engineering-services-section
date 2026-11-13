@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
+import { validateJsonSchema } from "@red-cup-engineering/json-schema-engineering-services-section/validation";
 import schema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 import { retailListings } from "../src/retail-listings.mjs";
 import {

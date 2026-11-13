@@ -1,4 +1,4 @@
-import { ACTOR as STRIPE_ACTOR, invokeCheckout, readiness, solicitCheckout } from "@red-cup-engineering/stripe-services-section";
+import { ACTOR as STRIPE_ACTOR, invokeCheckout, readiness, solicitCheckout } from "@red-cup-engineering/stripe-engineering-services-section";
 import { beginGoogleLogin, completeGoogleLogin, googleLogout, identifyGoogle, resolveGoogleSettings } from "@red-cup-engineering/computer-web-server/admission/google";
 import { tuftePage, tufteRedirect } from "@red-cup-engineering/tufte/application";
 import { storefrontItemTile } from "@red-cup-engineering/tufte/storefront";

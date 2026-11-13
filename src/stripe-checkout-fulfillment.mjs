@@ -1,5 +1,5 @@
-import { CHECKOUT_EVENTS } from "@red-cup-engineering/stripe-services-section/checkout-events";
-import { ingestWebhook, projectEvent, verifyStripeSignature } from "@red-cup-engineering/stripe-services-section";
+import { CHECKOUT_EVENTS } from "@red-cup-engineering/stripe-engineering-services-section/checkout-events";
+import { ingestWebhook, projectEvent, verifyStripeSignature } from "@red-cup-engineering/stripe-engineering-services-section";
 
 export const SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT=true;
 const MAX_STRIPE_WEBHOOK_BYTES = 1024 * 1024;

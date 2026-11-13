@@ -1,5 +1,5 @@
-import { CHECKOUT_EVENTS } from "@red-cup-engineering/stripe-services-section/checkout-events";
-import { isCompleteEventReceipt } from "@red-cup-engineering/stripe-services-section";
+import { CHECKOUT_EVENTS } from "@red-cup-engineering/stripe-engineering-services-section/checkout-events";
+import { isCompleteEventReceipt } from "@red-cup-engineering/stripe-engineering-services-section";
 import { reviewCopyEntitlement } from "./review-copy.mjs";
 
 function reply(value, status = 200) { return Response.json(value ?? null, { status }); }

@@ -1,5 +1,5 @@
 {
-  "name": "@red-cup-engineering/digital-goods-storefront-services-section",
+  "name": "@red-cup-engineering/digital-goods-storefront-engineering-services-section",
   "version": "0.5.3",
   "type": "module",
   "description": "The house digital-goods storefront: checkout-model, delivery, and receipt semantics usable by every product line (ebooks, newsletters, cohort, merch, briefing). Composes the card rail (stripe-services-section) rather than re-implementing it; catalog validation, view-model shaping, TUFTE storefront presentation, reader accounts (Google sign-in), gifts, stamped review copies and a library per account, paid-release delivery, HMAC download tokens (Web Crypto only, Worker-safe), and plain-JSON receipts.",
@@ -43,11 +43,11 @@
   },
   "dependencies": {
     "@red-cup-engineering/node-js-function-engineering-services-section": "^0.5.1",
-    "@red-cup-engineering/stripe-services-section": "0.2.1",
+    "@red-cup-engineering/stripe-engineering-services-section": "0.2.1",
     "@red-cup-engineering/computer-web-server": "0.6.2",
     "@red-cup-engineering/tufte": "0.21.0-dev.0",
     "@red-cup-engineering/mcp-engineering-services-section": "0.1.6",
-    "@red-cup-engineering/json-schema-services-section": "0.5.0"
+    "@red-cup-engineering/json-schema-engineering-services-section": "0.5.0"
   },
   "engines": {
     "node": ">=22.18"

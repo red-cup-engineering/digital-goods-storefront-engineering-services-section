@@ -9,7 +9,7 @@
  */
 import { readFileSync } from "node:fs";
 
-import { readiness } from "@red-cup-engineering/stripe-services-section";
+import { readiness } from "@red-cup-engineering/stripe-engineering-services-section";
 
 import { validateCatalogFile } from "../scripts/validate-catalog.mjs";
 import { renderCatalogToDirectory } from "../scripts/render-catalog.mjs";

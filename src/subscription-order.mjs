@@ -1,4 +1,4 @@
-import { digest } from "@red-cup-engineering/stripe-services-section";
+import { digest } from "@red-cup-engineering/stripe-engineering-services-section";
 import { stripeOfferingFor } from "./digital-goods-storefront.mjs";
 
 const EVENT_CATEGORY = "stripe-webhook-event-admission.events";

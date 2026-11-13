@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { retailListings } from "./retail-listings.mjs";
 import { bookLanguageTag } from "./digital-goods-storefront.mjs";
-import { validateJsonSchema } from "@red-cup-engineering/json-schema-services-section/validation";
+import { validateJsonSchema } from "@red-cup-engineering/json-schema-engineering-services-section/validation";
 import sourceSchema from "../schema/retailer-submission-draft-collection.schema.json" with { type: "json" };
 
 const LABELS = Object.freeze({
