@@ -275,7 +275,7 @@ The existing native `test/stripe-checkout-fulfillment.test.mjs` and `test/durabl
 
 The meet-gap list (checkout, delivery, tax handling, affiliates) this
 storefront is closing against is in the first ebook's own offer note —
-`artificial-intelligence-education-curriculum-services-section/content/
+`public-artificial-intelligence-education-curriculum-services-section/content/
 text/documents/articles/notes/2026/08/31/2026-08-31-note-offering-the-
 agent-operators-handbook-ebook.md` — not copied here; read it there.
 

@@ -22,7 +22,7 @@ const CATALOG = {
       id: "agent-operators-handbook",
       title: "The Agent Operator's Handbook",
       blurb: "A field guide.",
-      line: "artificial-intelligence-education-curriculum-services-section",
+      line: "public-artificial-intelligence-education-curriculum-services-section",
       status: "live",
       priceCents: 2900,
       currency: "usd",

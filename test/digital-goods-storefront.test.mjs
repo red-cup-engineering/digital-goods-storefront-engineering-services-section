@@ -23,7 +23,7 @@ function liveOffering(overrides = {}) {
     id: "agent-operators-handbook",
     title: "The Agent Operator's Handbook",
     blurb: "A field guide.",
-    line: "artificial-intelligence-education-curriculum-services-section",
+    line: "public-artificial-intelligence-education-curriculum-services-section",
     status: "live",
     priceCents: 2900,
     currency: "usd",
@@ -221,7 +221,7 @@ test("stripeOfferingFor projects the catalog offering into the stripe-services-s
     name: "The Agent Operator's Handbook",
     description: "A field guide.",
     quantity: { minimum: 1, maximum: 1 },
-    beneficiarySettlement: "artificial-intelligence-education-curriculum-services-section",
+    beneficiarySettlement: "public-artificial-intelligence-education-curriculum-services-section",
   });
 });
 
