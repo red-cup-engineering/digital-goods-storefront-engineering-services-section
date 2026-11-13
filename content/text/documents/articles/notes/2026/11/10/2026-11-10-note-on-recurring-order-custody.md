@@ -1,4 +1,10 @@
-# Recurring order custody in the original storefront
+---
+title: "Recurring order custody in the original storefront"
+description: "The same signed-in Shop reader who started an authored recurring Checkout can recover its original order binding for the original Stripe billing reader."
+date-created: 2026-11-10
+type: note
+name: recurring-order-custody
+---
 
 ## Receiving scenario
 

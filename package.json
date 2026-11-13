@@ -32,7 +32,7 @@
     "test/durable-fulfillment.test.mjs",
     "test/worker-runtime.test.mjs",
     "test/recurring-order.test.mjs",
-    "docs/RECURRING-ORDER-CUSTODY.md",
+    "content/text/documents/articles/notes/2026/11/10/2026-11-10-note-on-recurring-order-custody.md",
     "schema",
     "test/retail-listings.test.mjs",
     "test/retail-submission-drafts.test.mjs"

@@ -33,7 +33,7 @@ receive current billing and original product rights before each data/content
 delivery. No live product, price, customer or contract is created here.
 
 The complete component contract, custody bounds and native receiving scenario
-are in [Recurring order custody](docs/RECURRING-ORDER-CUSTODY.md).
+are in [Recurring order custody](content/text/documents/articles/notes/2026/11/10/2026-11-10-note-on-recurring-order-custody.md).
 
 ## Source language in search and retailer listings
 
