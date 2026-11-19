@@ -38,7 +38,7 @@ export function reviewCopyPointerKey(offeringId, grant) {
 }
 
 /** Validate a review-copy pointer for one offering and grant. */
-export function admitReviewCopyPointer(pointer, offeringId, grant) {
+export function validateReviewCopyPointer(pointer, offeringId, grant) {
   const bundle = pointer?.bundle, prefix = `goods/${offeringId}/review-copies/${grant}/`;
   if (pointer?.type !== "ReviewCopyRelease" || pointer.version !== 1 || pointer.offeringId !== offeringId || pointer.grant !== grant) throw unavailable("the pointer does not name this offering and grant");
   if (pointer.rendition !== REVIEW_COPY_RENDITION || !EDITION.test(pointer.release ?? "")) throw unavailable("the pointer names no advance-reader rendition of an edition");
@@ -56,7 +56,7 @@ export function stagedReviewCopyPointer(rendition, offeringId, { sha256, bytes }
   const record = rendition?.content ?? rendition;
   if (record?.type !== "AdvanceReaderRendition" || !record.grant) throw new TypeError("stage from a stamped AdvanceReaderRendition record; an unstamped rendition is not one reader's copy");
   if (sha256 !== record.artifactSha256) throw new TypeError(`the copy is ${sha256}, not the rendition's ${record.artifactSha256}`);
-  return admitReviewCopyPointer({
+  return validateReviewCopyPointer({
     type: "ReviewCopyRelease", version: 1, offeringId, grant: record.grant,
     release: record.editionInputDigest, rendition: record.rendition, renditionRecord: rendition.id ?? null,
     bundle: { key: `goods/${offeringId}/review-copies/${record.grant}/${sha256}.epub`, sha256, bytes, contentType: "application/epub+zip", filename: `${offeringId}-review-copy.epub` },
@@ -100,7 +100,7 @@ export async function readReviewCopy(entitlement, env, now = new Date()) {
   if (!store || typeof store.get !== "function") throw unavailable("no goods bucket is bound");
   const object = await store.get(reviewCopyPointerKey(entitlement.offeringId, entitlement.id));
   if (!object) throw unavailable("no copy is staged for this grant");
-  const pointer = admitReviewCopyPointer(JSON.parse(await object.text()), entitlement.offeringId, entitlement.id);
+  const pointer = validateReviewCopyPointer(JSON.parse(await object.text()), entitlement.offeringId, entitlement.id);
   if (pointer.release !== entitlement.release || pointer.bundle.sha256 !== entitlement.artifactSha256) throw unavailable("the staged copy is not the one this grant names");
   const copy = await store.get(pointer.bundle.key);
   if (!copy) throw unavailable("the staged copy is missing");

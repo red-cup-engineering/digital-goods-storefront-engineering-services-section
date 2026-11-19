@@ -409,7 +409,7 @@ export async function verifyDownloadToken({ secret, token, now = Date.now() }) {
  * @param {{session: {id: string, mode?: string}, offering: object, now?: Date|number}} params
  * @returns {object} the receipt
  */
-export function receiptFor({ session, offering, now = new Date() }) {
+export function recordFor({ session, offering, now = new Date() }) {
   const recordedAt = now instanceof Date ? now : new Date(now);
   return {
     type: "DigitalGoodsReceipt",
