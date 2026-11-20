@@ -1,7 +1,8 @@
+import { makeTemporaryDirectory } from "@red-cup-engineering/computer-file-engineering-services-section/temporary-directory";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+
 import { basename, join, resolve } from "node:path";
 
 import { admitReleasePointer, releasePointerKey } from "./paid-release.mjs";
@@ -49,7 +50,9 @@ export function stageAcceptedRelease({ record, offering, out, dir }) {
   // copied with a fixed time and mode, and zip writes UTC times.
   const epoch = Date.parse(`${String(record.acceptedAt).slice(0, 10)}T00:00:00Z`) / 1000;
   if (!Number.isFinite(epoch)) throw new Error("the acceptance record names no acceptance date");
-  const staging = mkdtempSync(join(tmpdir(), "paid-release-"));
+  const temporaryDirectory = makeTemporaryDirectory("paid-release");
+  try {
+const staging = temporaryDirectory.path;
   try {
     const members = [epub, pdf].map((file) => {
       const member = join(staging, basename(file));
@@ -63,6 +66,10 @@ export function stageAcceptedRelease({ record, offering, out, dir }) {
     rmSync(staging, { recursive: true, force: true });
   }
   return Object.freeze({ ...writePointer({ bundlePath, release, artifacts, offering, out: target }), members: [basename(epub), basename(pdf)] });
+
+  } finally {
+    temporaryDirectory.remove();
+  }
 }
 
 /** Stage a bundle built before edition records existed, naming its release by the build it came from. */
