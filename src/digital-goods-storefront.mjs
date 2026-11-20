@@ -1,3 +1,4 @@
+import { isNonEmptyString } from "@red-cup-engineering/signcell/values";
 /**
  * Digital-goods storefront domain semantics: catalog validation, view-model
  * shaping, the Stripe-offering derivation, download-token issuance and
@@ -57,9 +58,7 @@ export function bookLanguageTag(book) {
 }
 const SHA256_HEX = /^[a-f0-9]{64}$/iu;
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.length > 0;
-}
+
 
 function hasGoods(offering) {
   return Array.isArray(offering.goods) && offering.goods.length > 0;
