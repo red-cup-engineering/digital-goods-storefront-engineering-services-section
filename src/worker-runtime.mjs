@@ -5,11 +5,11 @@ import { storefrontItemTile } from "@red-cup-engineering/tufte/storefront";
 import { createTufteStorefront } from "@red-cup-engineering/tufte/storefront/application";
 import { catalogModel, prioritizeStorefrontOfferings, issueDownloadToken, stripeOfferingFor, publicCatalog, verifyDownloadToken } from "./digital-goods-storefront.mjs";
 import { accountOf } from "./durable-fulfillment.mjs";
-import { readSubscriptionOrderBinding, subscriptionBuyerPrincipal, subscriptionOrderRejection } from "./subscription-order.mjs";
+import { readSubscriptionOrderBinding, subscriptionBuyerPrincipal, subscriptionOrderRefusal } from "./subscription-order.mjs";
 import { fulfillStripeCheckoutWebhook } from "./stripe-checkout-fulfillment.mjs";
 export { SUPPORTS_EXTERNAL_STRIPE_PAYMENT_LINK_AUDIT } from "./stripe-checkout-fulfillment.mjs";
 import { admitPaidRelease, readPaidRelease, releaseExpectationFor } from "./paid-release.mjs";
-import { REVIEW_COPY_ID, validateReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
+import { REVIEW_COPY_ID, admitReviewCopyPointer, readReviewCopy, reviewCopyPointerKey, reviewCopyStanding } from "./review-copy.mjs";
 import { displayPrice, displayOfferingPrice, storefrontFacets, storefrontItemFor, structuredDataFor } from "./storefront-presentation.mjs";
 
 /** Independently reusable public Shop HTTP catalog, safe for cross-origin Bazaar readers.
@@ -24,13 +24,13 @@ export function createPublicShopCatalog(catalog, { checkoutArmed = false, recurr
   const original = publicCatalog(catalog);
   const ranked = prioritizeStorefrontOfferings(catalogModel(catalog, { checkoutArmed, recurringCheckoutArmed }).offerings);
   const sourcePublicOfferings = new Map(original.offerings.map((offering) => [offering.id, offering]));
-  const report = {
+  const readout = {
     ...original,
     offerings: ranked.map(({ id, buyable }) => ({
       ...sourcePublicOfferings.get(id), buyable,
     })),
   };
-  const body = JSON.stringify(report);
+  const body = JSON.stringify(readout);
   const headers = {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "public, max-age=60",
@@ -38,7 +38,7 @@ export function createPublicShopCatalog(catalog, { checkoutArmed = false, recurr
     "x-content-type-options": "nosniff",
   };
   return Object.freeze({
-    readout: report,
+    readout,
     fetch(request) {
       if (!request || typeof request.method !== "string") throw new TypeError("public Shop catalog requires an HTTP request");
       if (request.method === "GET") return new Response(body, { status: 200, headers });
@@ -83,7 +83,7 @@ async function referencedGiftId(grantedBy, reference) {
 function dated(value) { return typeof value === "string" ? value.slice(0, 10) : typeof value === "number" ? new Date(value * 1000).toISOString().slice(0, 10) : null; }
 
 // A sign-in result from the web server's admission module as a response.
-function validated(result) {
+function admitted(result) {
   if (result.status !== 302) return null;
   const headers = new Headers({ location: result.redirect, "cache-control": "no-store" });
   for (const cookie of result.cookies ?? []) headers.append("set-cookie", cookie);
@@ -213,9 +213,9 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       catch { return message(context, "Checkout unavailable", "The subscription's order records are unavailable. Please try again later.", 503); }
     }
     if (!armed(env)) return message(context, "Not available yet", "Card checkout for this book opens once the shop's card payments are connected.", 409);
-    let validatedRelease;
+    let admittedRelease;
     if (item.release) {
-      try { validatedRelease = await admitPaidRelease(item.release, { goods: env.goods }, releaseExpectationFor(item)); }
+      try { admittedRelease = await admitPaidRelease(item.release, { goods: env.goods }, releaseExpectationFor(item)); }
       catch { return message(context, "Checkout unavailable", "The current edition is unavailable. Please try again later.", 503); }
     }
     const customerReference = crypto.randomUUID();
@@ -224,7 +224,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     if (offered.type !== "Offer") return message(context, "Checkout unavailable", "This book isn't available to buy yet.", 409);
     const accepted = await invokeCheckout({ "@context": solicitation["@context"], id: `${solicitation.id}:accept`, type: "Accept", actor: buyerActor, target: solicitation.target, object: { offer: offered } }, { env, catalog: railCatalog, store: env.audit });
     if (accepted.type !== "Accept") return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 502);
-    const registration = await env.fulfillment.recordCheckout({ sessionId: accepted.object.stripeSessionId, offeringId: id, requestDigest: accepted.object.requestDigest, amountTotal: item.priceCents, currency: item.currency, stripeMode: accepted.object.stripeMode, goods: item.goods, release: item.release ?? null, admittedRelease: validatedRelease ?? null, account: reader ? accountOf(reader.email) : null, status: "open",
+    const registration = await env.fulfillment.recordCheckout({ sessionId: accepted.object.stripeSessionId, offeringId: id, requestDigest: accepted.object.requestDigest, amountTotal: item.priceCents, currency: item.currency, stripeMode: accepted.object.stripeMode, goods: item.goods, release: item.release ?? null, admittedRelease: admittedRelease ?? null, account: reader ? accountOf(reader.email) : null, status: "open",
       ...(item.mode === "subscription" ? { mode: "subscription", buyerActor, buyerPrincipal,
         request: structuredClone(offered.object.request), offering: structuredClone(offered.object.offering) } : {}) });
     if (!registration || registration.failed || !["registered", "duplicate"].includes(registration.disposition)) return message(context, "Checkout unavailable", "We couldn't start checkout. Please try again later.", 503);
@@ -408,8 +408,8 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
    *   POST /api/gifts/:id/revoke  {reason?} → {disposition}
    */
   async function giftApi(request, env, rest) {
-    const { as, refusal: rejection } = await authorizedAgent(request, env, "gift");
-    if (rejection) return rejection;
+    const { as, refusal } = await authorizedAgent(request, env, "gift");
+    if (refusal) return refusal;
     const body = () => agentBody(request);
     if (rest === "" && request.method === "GET") return json({ giftable: giftable().map((item) => ({ id: item.id, title: item.title })) });
     if (rest === "" && request.method === "POST") {
@@ -458,8 +458,8 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
    *   POST /api/review-copies/:id/revoke  {reason?} → {disposition}
    */
   async function reviewCopyApi(request, env, rest) {
-    const { as, refusal: rejection } = await authorizedAgent(request, env, "review-copy");
-    if (rejection) return rejection;
+    const { as, refusal } = await authorizedAgent(request, env, "review-copy");
+    if (refusal) return refusal;
     if (rest === "" && request.method === "POST") {
       const input = await agentBody(request);
       const item = offering(input?.offering), recipient = accountOf(input?.email);
@@ -469,7 +469,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
       let pointer;
       try {
         const object = await env.goods?.get(reviewCopyPointerKey(item.id, input.id));
-        pointer = object ? validateReviewCopyPointer(JSON.parse(await object.text()), item.id, input.id) : null;
+        pointer = object ? admitReviewCopyPointer(JSON.parse(await object.text()), item.id, input.id) : null;
       } catch { pointer = null; }
       if (!pointer || pointer.release !== input.release || pointer.bundle.sha256 !== input.artifactSha256) return json({ error: "stage the stamped copy under this grant before recording it" }, 409);
       const granted = await env.fulfillment.grantEntitlement({ kind: "review-copy", id: input.id, offeringId: item.id, release: input.release, artifactSha256: input.artifactSha256, expiresAt: input.expiresAt, recipientEmail: recipient, grantedBy: as, note: String(input.note ?? "").trim(), createdAt: new Date().toISOString() });
@@ -492,14 +492,14 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
   function beginSignIn(context) {
     const { env } = context.capabilities;
     if (!signInOpen(env)) return signInFirst(context);
-    return validated(beginGoogleLogin(signIn(env), context.url)) ?? message(context, "Sign-in unavailable", "Sign-in couldn't start. Please try again later.", 503);
+    return admitted(beginGoogleLogin(signIn(env), context.url)) ?? message(context, "Sign-in unavailable", "Sign-in couldn't start. Please try again later.", 503);
   }
   async function finishSignIn(context) {
     const { env } = context.capabilities;
     const result = await completeGoogleLogin(signIn(env), context.request, context.url);
-    return validated(result) ?? message(context, "Sign-in didn't finish", result.error === "login-expired" ? "The sign-in took too long. Please try again." : "Google didn't confirm a verified email address. Please try again.", result.status >= 500 ? 502 : 400);
+    return admitted(result) ?? message(context, "Sign-in didn't finish", result.error === "login-expired" ? "The sign-in took too long. Please try again." : "Google didn't confirm a verified email address. Please try again.", result.status >= 500 ? 502 : 400);
   }
-  const signOut = (context) => validated(googleLogout(signIn(context.capabilities.env)));
+  const signOut = (context) => admitted(googleLogout(signIn(context.capabilities.env)));
 
   const application = createTufteStorefront({
     catalog: storefrontCatalog,
@@ -536,7 +536,7 @@ export function createDigitalGoodsStorefrontWorker({ catalog, origin, buyerActor
     async readSubscriptionOrderForPrincipal(identity, selection, env) {
       const buyerPrincipal = subscriptionBuyerPrincipal(identity), account = accountOf(identity?.email);
       if (!buyerPrincipal || identity.emailVerified !== true || !account || identity.email.length > 320)
-        return subscriptionOrderRejection("verified-google-principal-required");
+        return subscriptionOrderRefusal("verified-google-principal-required");
       return readSubscriptionOrderBinding(selection, { account, buyerActor, buyerPrincipal,
         catalog, fulfillment: env.fulfillment, audit: env.audit });
     },

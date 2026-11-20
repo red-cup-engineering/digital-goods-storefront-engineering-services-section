@@ -116,11 +116,11 @@ export async function reconcilePaidReleases({ catalog, servicesRoot, store, out,
       const namesIntended = pointer?.release === intended.release && Object.entries(intended.artifacts).every(([format, digest]) => pointer.artifacts?.[format] === digest);
       let current = false;
       if (namesIntended) {
-        const validated = admitReleasePointer(pointer, offering.id);
-        const storedBundle = await store.get(validated.bundle.key);
+        const admitted = admitReleasePointer(pointer, offering.id);
+        const storedBundle = await store.get(admitted.bundle.key);
         if (storedBundle !== null) {
           const bytes = Buffer.from(storedBundle.body);
-          current = bytes.byteLength === validated.bundle.bytes && createHash("sha256").update(bytes).digest("hex") === validated.bundle.sha256;
+          current = bytes.byteLength === admitted.bundle.bytes && createHash("sha256").update(bytes).digest("hex") === admitted.bundle.sha256;
         }
       }
       if (current) { rows.push({ offering: offering.id, release: intended.release, state: "current" }); continue; }

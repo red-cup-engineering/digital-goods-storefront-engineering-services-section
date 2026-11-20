@@ -10,7 +10,7 @@ const PROVIDER_CHECKOUT=/^cs_[A-Za-z0-9_]+$/u;
 /** Only the original storefront operator may select an outside-catalog
  * Payment Link. Stripe's valid HMAC authenticates the event, NOT the
  * competence of its publisher nor a Group treasury entitlement. */
-function validatedExternalLinks(input){
+function admittedExternalLinks(input){
  if(input===undefined)return new Set();
  if(!Array.isArray(input)||input.length>64||
     input.some(x=>typeof x!=='string'||!EXTERNAL_LINK.test(x))||
@@ -133,7 +133,7 @@ export async function fulfillStripeCheckoutWebhook(request, env) {
     if (!CHECKOUT_EVENTS.includes(event?.type)) return env.recurringCheckout === true
       ? receiveRecurringObservation(rawBody, request.headers.get("stripe-signature") ?? "", env) : json({ accepted: true });
     let external;
-    try{external=validatedExternalLinks(env.externalPaymentLinks);}
+    try{external=admittedExternalLinks(env.externalPaymentLinks);}
     catch{return json({error:'external-checkout-source-config-invalid'},503);}
     const projection = projectEvent(event);
     const rawLink=event?.data?.object?.payment_link;
