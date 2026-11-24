@@ -1,0 +1,45 @@
+{
+  "name": "@red-cup-engineering/digital-goods-storefront-engineering-services-section",
+  "version": "0.5.6-dev.0",
+  "type": "module",
+  "description": "The house digital-goods storefront: checkout-model, delivery, and receipt semantics usable by every product line (ebooks, newsletters, cohort, merch, briefing). Composes the card rail (stripe-services-section) rather than re-implementing it; catalog validation, view-model shaping, TUFTE storefront presentation, reader accounts (Google sign-in), gifts, stamped review copies and a library per account, paid-release delivery, HMAC download tokens (Web Crypto only, Worker-safe), and plain-JSON receipts.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/red-cup-engineering/digital-goods-storefront-engineering-services-section.git"
+  },
+  "exports": {
+    ".": "./src/digital-goods-storefront.mjs",
+    "./digital-goods-storefront": "./src/digital-goods-storefront.mjs",
+    "./worker-runtime": "./src/worker-runtime.mjs",
+    "./durable-fulfillment": "./src/durable-fulfillment.mjs",
+    "./paid-release": "./src/paid-release.mjs",
+    "./paid-release-staging": "./src/paid-release-staging.mjs",
+    "./storefront-presentation": "./src/storefront-presentation.mjs",
+    "./retail-listings": "./src/retail-listings.mjs",
+    "./review-copy": "./src/review-copy.mjs",
+    "./shop-mcp": "./src/shop-mcp.mjs",
+    "./retail-submission-drafts": "./src/retail-submission-drafts.mjs",
+    "./retail-submission-schema": "./schema/retailer-submission-draft-collection.schema.json"
+  },
+  "bin": {
+    "digital-goods-storefront-cli": "apps/storefront-cli.mjs"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "apps",
+    "content/text/documents/articles/notes/2026/11/10/2026-11-10-note-on-recurring-order-custody.md",
+    "schema"
+  ],
+  "dependencies": {
+    "@red-cup-engineering/node-js-function-engineering-services-section": "^0.5.1",
+    "@red-cup-engineering/stripe-engineering-services-section": "^0.2.2",
+    "@red-cup-engineering/computer-web-server": "^0.7.5",
+    "@red-cup-engineering/tufte": "^0.22.27",
+    "@red-cup-engineering/mcp-engineering-services-section": "^0.1.13",
+    "@red-cup-engineering/json-schema-engineering-services-section": "^0.5.8",
+    "@red-cup-engineering/computer-file-engineering-services-section": "^0.8.16",
+    "@red-cup-engineering/signcell": "^0.18.0 || 0.18.1-dev.0"
+  },
+  "license": "MIT"
+}
