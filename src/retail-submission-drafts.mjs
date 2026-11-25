@@ -1,5 +1,5 @@
+import { niUriFromDigest, sha256 } from "@red-cup-engineering/semiotic-content-address-system";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -203,8 +203,7 @@ export async function generateRetailerSubmissionDrafts(
   const originalModule = resolve(catalogModule);
   const sourceBytes = readFileSync(originalModule);
   const contentDigest =
-    "ni:///sha-256;" +
-    createHash("sha256").update(sourceBytes).digest("base64url");
+    niUriFromDigest(sha256(sourceBytes));
   const sourceCatalog = { repository, path, contentDigest };
   // Node caches ESM by URL. A revised generated catalog needs its own module
   // identity, otherwise new source bytes could describe an old cached value.

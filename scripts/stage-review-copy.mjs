@@ -6,7 +6,7 @@
  *
  *   node scripts/stage-review-copy.mjs --rendition <advance-reader-rendition.json> --epub <stamped.epub> --offering <id> --out <dir> [--bucket shop-561-group-goods] [--upload]
  */
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@red-cup-engineering/semiotic-content-address-system";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -19,7 +19,7 @@ if (!values.rendition || !values.epub || !values.offering || !values.out) throw 
 
 const cell = JSON.parse(readFileSync(resolve(values.rendition), "utf8"));
 const bytes = readFileSync(resolve(values.epub));
-const pointer = stagedReviewCopyPointer(cell, values.offering, { sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.byteLength });
+const pointer = stagedReviewCopyPointer(cell, values.offering, { sha256: sha256Hex(bytes), bytes: bytes.byteLength });
 const out = resolve(values.out);
 mkdirSync(out, { recursive: true });
 const pointerPath = join(out, "pointer.json");

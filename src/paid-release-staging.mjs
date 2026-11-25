@@ -1,5 +1,5 @@
+import { niUriFromDigest, sha256, sha256Hex } from "@red-cup-engineering/semiotic-content-address-system";
 import { makeTemporaryDirectory } from "@red-cup-engineering/computer-file-engineering-services-section/temporary-directory";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 
@@ -16,7 +16,7 @@ import { admitReleasePointer, releasePointerKey } from "./paid-release.mjs";
  * catalog's acceptance records and putting only what differs.
  */
 
-const contentAddress = (bytes) => `ni:///sha-256;${createHash("sha256").update(bytes).digest("base64url")}`;
+const contentAddress = (bytes) => niUriFromDigest(sha256(bytes));
 const hexOf = (ni) => Buffer.from(String(ni).replace(/^ni:\/\/\/sha-256;/u, ""), "base64url").toString("hex");
 
 /** The release and artifact identities an accepted edition record names. */
@@ -84,7 +84,7 @@ export function stageBuiltBundle({ bundle, release, offering, out }) {
 function writePointer({ bundlePath, release, artifacts, offering, out }) {
   const bytes = readFileSync(bundlePath);
   const releaseSegment = release.replace(/^ni:\/\/\/sha-256;/u, "").replace(/[^A-Za-z0-9._-]/gu, "-");
-  const bundleDigest = createHash("sha256").update(bytes).digest("hex");
+  const bundleDigest = sha256Hex(bytes);
   // The bundle key names the release, so a new edition never overwrites the
   // bytes an earlier buyer paid for; only the pointer moves.
   const pointer = admitReleasePointer({
@@ -127,7 +127,7 @@ export async function reconcilePaidReleases({ catalog, servicesRoot, store, out,
         const storedBundle = await store.get(admitted.bundle.key);
         if (storedBundle !== null) {
           const bytes = Buffer.from(storedBundle.body);
-          current = bytes.byteLength === admitted.bundle.bytes && createHash("sha256").update(bytes).digest("hex") === admitted.bundle.sha256;
+          current = bytes.byteLength === admitted.bundle.bytes && sha256Hex(bytes) === admitted.bundle.sha256;
         }
       }
       if (current) { rows.push({ offering: offering.id, release: intended.release, state: "current" }); continue; }

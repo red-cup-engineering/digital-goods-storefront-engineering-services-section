@@ -32,14 +32,15 @@
     "schema"
   ],
   "dependencies": {
-    "@red-cup-engineering/node-js-function-engineering-services-section": "^0.5.1",
-    "@red-cup-engineering/stripe-engineering-services-section": "^0.2.2",
-    "@red-cup-engineering/computer-web-server": "^0.7.5",
-    "@red-cup-engineering/tufte": "^0.22.27",
-    "@red-cup-engineering/mcp-engineering-services-section": "^0.1.13",
-    "@red-cup-engineering/json-schema-engineering-services-section": "^0.5.8",
     "@red-cup-engineering/computer-file-engineering-services-section": "^0.8.16",
-    "@red-cup-engineering/signcell": "^0.18.0 || 0.18.1-dev.0"
+    "@red-cup-engineering/computer-web-server": "^0.7.5",
+    "@red-cup-engineering/json-schema-engineering-services-section": "^0.5.8",
+    "@red-cup-engineering/mcp-engineering-services-section": "^0.1.13",
+    "@red-cup-engineering/node-js-function-engineering-services-section": "^0.5.1",
+    "@red-cup-engineering/semiotic-content-address-system": "0.1.9",
+    "@red-cup-engineering/signcell": "^0.18.0 || 0.18.1-dev.0",
+    "@red-cup-engineering/stripe-engineering-services-section": "^0.2.2",
+    "@red-cup-engineering/tufte": "^0.22.27"
   },
   "license": "MIT"
 }
